@@ -1,0 +1,13 @@
+# Schema for the configuration files of the google_analytics_counter module.
+
+google_analytics_counter.settings:
+  type: config_object
+  label: 'Settings'
+  mapping:
+    general_settings:
+      type: mapping
+      label: 'General Settings'
+      mapping:
+        gac_type_page:
+          type: string
+          label: 'Page Content Type.'
