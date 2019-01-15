@@ -272,14 +272,18 @@ class GoogleAnalyticsCounterController extends ControllerBase {
       '#value' => $this->t("The pages visited, listed by URI. The URI is the portion of a page's URL following the domain name; for example, the URI portion of www.example.com/contact.html is /contact.html."),
     ];
 
-    $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter');
+    $date_ranges = $this->getDateRanges();
+    $headers[] = $this->t('Pagepath');
+    $rows = [];
+    foreach($date_ranges as $key => $value) {
+      $headers[] = $this->t($key . ' Pageviews');
+      $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter', $rows, $key);
+    }
+
     // Display table.
     $build['drupal_info']['top_twenty_results']['counter']['table'] = [
       '#type' => 'table',
-      '#header' => [
-        $this->t('Pagepath'),
-        $this->t('Pageviews'),
-      ],
+      '#header' => $headers,
       '#rows' => $rows,
     ];
 
@@ -299,7 +303,13 @@ class GoogleAnalyticsCounterController extends ControllerBase {
       '#value' => $this->t('Pageviews is the total number of pages viewed. Pageviews include node/id, aliases, international, and redirects, amongst other pages Google has determined belong to the pageview.'),
     ];
 
-    $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter_storage');
+    // TODO: Finish cleaning this up?
+    $date_ranges = $this->getDateRanges();
+    $headers[] = $this->t('Pagepath');
+    foreach($date_ranges as $key => $value) {
+      $headers[] = $this->t($key . ' Pageviews');
+//      $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter_storage', $key);
+    }
     // Display table.
     $build['drupal_info']['top_twenty_results']['storage']['table'] = [
       '#type' => 'table',
@@ -345,6 +355,22 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     $build = $this->messageManager->revokeAuthenticationMessage($build);
 
     return $build;
+  }
+
+  /**
+   * Returns a list of configured date ranges.
+   *
+   * @return array
+   *   Date ranges.
+   */
+  protected function getDateRanges() {
+    $config = $this->config;
+    $date_ranges = [];
+    if (!empty($config->get('general_settings.date_ranges'))) {
+      $date_range_val = $config->get('general_settings.date_ranges');
+      $date_ranges = (array) json_decode($date_range_val);
+    }
+    return $date_ranges;
   }
 
 }

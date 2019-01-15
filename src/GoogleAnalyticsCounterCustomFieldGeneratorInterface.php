@@ -23,7 +23,7 @@ interface GoogleAnalyticsCounterCustomFieldGeneratorInterface {
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacPreAddField($type, $key, $value);
+  public function gacPreAddField($type, $key, $value, $date);
 
   /**
    * Adds the checked the fields.
@@ -38,7 +38,7 @@ interface GoogleAnalyticsCounterCustomFieldGeneratorInterface {
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacAddField(NodeTypeInterface $type, $label = 'Google Analytics Counter');
+  public function gacAddField(NodeTypeInterface $type, $date, $label = 'Google Analytics Counter');
 
   /**
    * Prepares to delete the custom field and saves the configuration.
@@ -48,7 +48,7 @@ interface GoogleAnalyticsCounterCustomFieldGeneratorInterface {
    *
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacPreDeleteField($type, $key);
+  public function gacPreDeleteField($type, $key, $date);
 
   /**
    * Deletes the unchecked field configurations.
@@ -61,7 +61,7 @@ interface GoogleAnalyticsCounterCustomFieldGeneratorInterface {
    *
    * @see GoogleAnalyticsCounterConfigureTypesForm
    */
-  public function gacDeleteField(NodeTypeInterface $type);
+  public function gacDeleteField(NodeTypeInterface $type, $date);
 
   /**
    * Deletes the field storage configurations.

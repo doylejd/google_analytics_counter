@@ -8,5 +8,6 @@ general_settings:
   cache_length: 86400
   queue_time: 120
   start_date: '30 days ago'
+  date_range: '{"30 days ago":"Last Month"}'
   project_name: ''
   profile_id: ''
