@@ -7,7 +7,7 @@ general_settings:
   api_dayquota: 50000
   cache_length: 86400
   queue_time: 120
-  start_date: '-1 day'
+  start_date:  '{"-1 month":"-1 month"}'
   advanced_date_checkbox: false
   fixed_start_date: ''
   fixed_end_date: ''

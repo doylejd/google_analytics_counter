@@ -24,11 +24,6 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
   use StringTranslationTrait;
 
   /**
-   * The table for the node__field_google_analytics_counter storage.
-   */
-  const TABLE = 'node__field_google_analytics_counter';
-
-  /**
    * The google_analytics_counter.settings config object.
    *
    * @var \Drupal\Core\Config\Config
@@ -288,8 +283,15 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
     //Instantiate a new GoogleAnalyticsCounterFeed object.
     $feed = $this->gacGetFeed($parameters, $cache_options);
 
+    // The total number of pageViews for this profile from start_date to end_date.
+    $total_results = 0;
+    foreach($parameters['date_ranges'] as $key => $value){
+
+      $total_results += $feed->feedResults[$key]->totalsForAllResults['pageviews'];
+
+    }
     // Set the total number of pagePaths for this profile from start_date to end_date.
-    $total_results = $this->state->set('google_analytics_counter.total_paths', $feed->results->totalResults);
+    $total_results = $this->state->set('google_analytics_counter.total_paths', $total_results);
 
     return $total_results;
   }
@@ -335,14 +337,24 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
       $this->state->set('google_analytics_counter.data_last_refreshed', $feed->results->dataLastRefreshed);
     }
 
-    // The first selfLink query to Google. Helpful for debugging in the dashboard.
-    $this->state->set('google_analytics_counter.most_recent_query', $feed->results->selfLink);
-
     // The total number of pageViews for this profile from start_date to end_date.
-    $this->state->set('google_analytics_counter.total_pageviews', $feed->results->totalsForAllResults['pageviews']);
+    $total_pageviews = 0;
+    $total_results = 0;
+
+    $date_range = '';
+    foreach($parameters['date_ranges'] as $key => $value){
+      $date_range = $key;
+      $total_pageviews += $feed->feedResults[$key]->totalsForAllResults['pageviews'];
+      $total_results += $feed->feedResults[$key]->totalResults;
+
+    }
+    $this->state->set('google_analytics_counter.total_pageviews', $total_pageviews);
+
+    // The first selfLink query to Google. Helpful for debugging in the dashboard.
+    $this->state->set('google_analytics_counter.most_recent_query', $feed->feedResults[$key]->selfLink);
 
     // The total number of pagePaths for this profile from start_date to end_date.
-    $this->state->set('google_analytics_counter.total_paths', $feed->results->totalResults);
+    $this->state->set('google_analytics_counter.total_paths', $total_results);
 
     // The number of results from Google Analytics in one request.
     $chunk = $config->get('general_settings.chunk_to_fetch');
@@ -357,15 +369,15 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
     $pointer += $chunk;
 
     $t_args = [
-      '@size_of' => sizeof($feed->results->rows),
+      '@size_of' => sizeof($feed->feedResults[$date_range]->rows),
       '@first' => ($pointer - $chunk),
-      '@second' => ($pointer - $chunk - 1 + sizeof($feed->results->rows)),
+      '@second' => ($pointer - $chunk - 1 + sizeof($feed->feedResults[$date_range]->rows)),
     ];
     $this->logger->info('Retrieved @size_of items from Google Analytics data for paths @first - @second.', $t_args);
 
     // Increase the step or set the step to 0 depending on whether
     // the pointer is less than or equal to the total results.
-    if ($pointer <= $feed->results->totalResults) {
+    if ($pointer <= $feed->feedResults[$date_range]->totalResults) {
       $new_step = $step + 1;
     }
     else {
@@ -392,24 +404,31 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
   public function gacUpdatePathCounts($index = 0) {
     $feed = $this->reportData($index);
 
-    foreach ($feed->results->rows as $value) {
-      // Use only the first 2047 characters of the pagepath. This is extremely long
-      // but Google does store everything and bots can make URIs that exceed that length.
-      $page_path = substr(htmlspecialchars($value['pagePath'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), 0, 2047);
-      $page_path = SafeMarkup::checkPlain($page_path);
+    $count = 0;
+    foreach ($feed->feedResults as $daterange => $results){
 
-      // Update the Google Analytics Counter.
-      $this->connection->merge('google_analytics_counter')
-        ->key('pagepath_hash', md5($page_path))
-        ->fields([
-          'pagepath' => $page_path,
-          'pageviews' => $value['pageviews'],
-        ])
-        ->execute();
+      foreach ($results->rows as $value) {
+        // Use only the first 2047 characters of the pagepath. This is extremely long
+        // but Google does store everything and bots can make URIs that exceed that length.
+        $page_path = substr(htmlspecialchars($value['pagePath'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), 0, 2047);
+        $page_path = SafeMarkup::checkPlain($page_path);
+
+        // Update the Google Analytics Counter.
+        $this->connection->merge('google_analytics_counter')
+          ->key('pagepath_hash', md5($page_path . $daterange))
+          ->fields([
+            'pagepath' => $page_path,
+            'pageviews' => $value['pageviews'],
+            'date_range' => $daterange,
+          ])
+          ->execute();
+        $count++;
+      }
     }
 
+
     // Log the results.
-    $this->logger->info($this->t('Merged @count paths from Google Analytics into the database.', ['@count' => count($feed->results->rows)]));
+    $this->logger->info($this->t('Merged @count paths from Google Analytics into the database.', ['@count' => $count]));
   }
 
   /**
@@ -425,6 +444,13 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
    * @throws \Exception
    */
   public function gacUpdateStorage($nid, $bundle, $vid) {
+    // Only add field data for bundles which are configured.
+    // TODO: May be a better way to do this.
+    $bundle_enabled = $this->config->get("general_settings.gac_type_$bundle");
+    if(!$bundle_enabled) {
+      return;
+    }
+
     // Get all the aliases for a given node id.
     $aliases = [];
     $path = '/node/' . $nid;
@@ -445,15 +471,26 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
 
     // See scrum_notes/google_analytics_counter/aliases.md
 
-    // It's the front page
-    // Todo: Could be brittle
-    if ($nid == substr(\Drupal::configFactory()->get('system.site')->get('page.front'), 6)) {
-      $sum_of_pageviews = $this->sumPageviews(['/']);
-      $this->updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid);
-    }
-    else {
-      $sum_of_pageviews = $this->sumPageviews(array_unique($aliases));
-      $this->updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid);
+    $date_ranges = json_decode($this->config->get('general_settings.start_date'));
+
+    // Loop through all date ranges currently enabled to re-evaluate fields.
+    // TODO: Look at improving this. Semi disconected and non-intuitive.
+    foreach($date_ranges as $date => $date_value){
+      $date_alias_hash = [];
+      // TODO: Make this better... aliases are hased with date currently.
+      foreach ($aliases as $key => $value) {
+        $date_alias_hash[$key] = $value . $date_value;
+      }
+      // It's the front page
+      // Todo: Could be brittle
+      if ($nid == substr(\Drupal::configFactory()->get('system.site')->get('page.front'), 6)) {
+        $sum_of_pageviews = $this->sumPageviews(['/'.$date_value], $date);
+        $this->updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid, $date);
+      }
+      else {
+        $sum_of_pageviews = $this->sumPageviews(array_unique($date_alias_hash), $date);
+        $this->updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid, $date);
+      }
     }
   }
 
@@ -464,14 +501,22 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
    * @return string
    *   Count of views.
    */
-  protected function sumPageviews($aliases) {
+  protected function sumPageviews($aliases, $date = NULL) {
+//    $parameters = $this->setParameters();
+//
+//    $date_ranges = $parameters['date_ranges'];
+//
+
     // $aliases can make pageview_total greater than pageviews
     // because $aliases can include page aliases, node/id, and node/id/ URIs.
     $hashes = array_map('md5', $aliases);
-    $path_counts = $this->connection->select('google_analytics_counter', 'gac')
+    $query = $this->connection->select('google_analytics_counter', 'gac')
       ->fields('gac', ['pageviews'])
-      ->condition('pagepath_hash', $hashes, 'IN')
-      ->execute();
+      ->condition('pagepath_hash', $hashes, 'IN');
+    if (isset($date)) {
+      $query->condition('date_range', $date);
+    }
+    $path_counts = $query->execute();
     $sum_of_pageviews = 0;
     foreach ($path_counts as $path_count) {
       $sum_of_pageviews += $path_count->pageviews;
@@ -494,9 +539,12 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
    *
    * @throws \Exception
    */
-  protected function updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid) {
-    $config = $this->config;
+  protected function updateCounterStorage($nid, $sum_of_pageviews, $bundle, $vid, $date) {
 
+    $date_val = preg_replace('/[^\da-z]/i', '_', $date);
+    $field_name = 'field_gac_' . $date_val;
+
+    // TODO - Need to figure out exactly what this is used for.
     $this->connection->merge('google_analytics_counter_storage')
       ->key('nid', $nid)
       ->fields([
@@ -505,14 +553,14 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
       ->execute();
 
     // Update the Google Analytics Counter field if it exists.
-    if (!$this->connection->schema()->tableExists(static::TABLE)) {
+    if (!$this->connection->schema()->tableExists('node__' . $field_name)) {
       return;
     }
 
     // Todo: This can be more performant by adding only the bundles that have been selected.
-    $this->connection->upsert('node__field_google_analytics_counter')
+    $this->connection->upsert('node__' . $field_name)
       ->key('revision_id')
-      ->fields(['bundle', 'deleted', 'entity_id', 'revision_id', 'langcode', 'delta', 'field_google_analytics_counter_value'])
+      ->fields(['bundle', 'deleted', 'entity_id', 'revision_id', 'langcode', 'delta', $field_name . '_value'])
       ->values([
         'bundle' => $bundle,
         'deleted' => 0,
@@ -520,7 +568,7 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
         'revision_id' => $vid,
         'langcode' => 'en',
         'delta' => 0,
-        'field_google_analytics_counter_value' => $sum_of_pageviews,
+        $field_name . '_value' => $sum_of_pageviews,
       ])
       ->execute();
   }
@@ -538,6 +586,12 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
 
     // Initialize the pointer.
     $pointer = $step * $chunk + 1;
+
+
+    // Enhancements to support multiple time slots.
+    $date_range_val = $config->get('general_settings.start_date');
+    $date_ranges = (array) json_decode($date_range_val);
+
 
     /**
     $parameters is an associative array containing:
@@ -559,7 +613,9 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
       'sort_metric' => NULL,
       'filters' => NULL,
       'segment' => NULL,
-      'start_date' => !empty($config->get('general_settings.fixed_start_date')) ? strtotime($config->get('general_settings.fixed_start_date')) : strtotime($config->get('general_settings.start_date')),
+      // TODO: Remove start/end date in response to date_ranges.
+      'date_ranges' => !empty($config->get('general_settings.fixed_start_date')) ? strtotime($config->get('general_settings.fixed_start_date')) : $date_ranges ,
+      'start_date' => !empty($config->get('general_settings.fixed_start_date')) ? strtotime($config->get('general_settings.fixed_start_date')) : array_pop($date_ranges),
       // If fixed dates are not in use, use 'tomorrow' to offset any timezone
       // shift between the hosting and Google servers.
       'end_date' => !empty($config->get('general_settings.fixed_end_date')) ? strtotime($config->get('general_settings.fixed_end_date')) : strtotime('tomorrow'),
@@ -584,7 +640,7 @@ class GoogleAnalyticsCounterManager implements GoogleAnalyticsCounterManagerInte
     - expire: optional [default=CACHE_TEMPORARY]
     - refresh: optional [default=FALSE].
      */
-    $cache_options = [
+    $cache_options[$parameters['start_date']] = [
       'cid' => 'google_analytics_counter_' . md5(serialize($parameters)),
       'expire' => GoogleAnalyticsCounterHelper::cacheTime(),
       'refresh' => FALSE,

@@ -35,6 +35,13 @@ class GoogleAnalyticsCounterFeed {
   public $results;
 
   /**
+   * Formatted array of feed results.
+   *
+   * @var array
+   */
+  public $feedResults;
+
+  /**
    * URL to Google Analytics Core Reporting API.
    *
    * @var string
@@ -356,7 +363,7 @@ class GoogleAnalyticsCounterFeed {
       'expire' => GoogleAnalyticsCounterHelper::cacheTime(),
       'refresh' => FALSE,
     ];
-    $cache_options += $cache_defaults;
+    $cache_options = $cache_defaults;
 
     // Provide a query MD5 for the cid if the developer did not provide one.
     if (empty($cache_options['cid'])) {
@@ -386,6 +393,106 @@ class GoogleAnalyticsCounterFeed {
 
     return (empty($this->error));
   }
+
+  /**
+   * Public query method for all Core Reporting API features.
+   */
+  public function queryResults($url, $params, $method, $headers, $cache_options = array()) {
+    $params_defaults = [
+      'start-index' => 1,
+      'max-results' => 1000,
+      'start-date' => date('Y-m-d', strtotime('today')),
+    ];
+    $params += $params_defaults;
+
+    // Provide cache defaults if a developer did not override them.
+    $cache_defaults = [
+      'cid' => NULL,
+      'expire' => GoogleAnalyticsCounterHelper::cacheTime(),
+      'refresh' => FALSE,
+    ];
+    $cache_options[$params['date-range']] = $cache_defaults;
+
+    // Provide a query MD5 for the cid if the developer did not provide one.
+    if (empty($cache_options[$params['date-range']]['cid'])) {
+      $cache_options[$params['date-range']]['cid'] = 'GoogleAnalyticsCounterFeed:' . md5(serialize(array_merge($params, [
+          $url,
+          $method,
+        ])));
+    }
+
+    $cache[$params['date-range']] = \Drupal::cache()->get($cache_options[$params['date-range']]['cid']);
+
+    if (!$cache_options[$params['date-range']]['refresh'] && isset($cache[$params['date-range']]) && !empty($cache[$params['date-range']]->data)) {
+      $this->feedResults[$params['date-range']] = $cache[$params['date-range']]->data;
+      $this->fromCache = TRUE;
+    }
+    else {
+      $this->requestResults($url, $params, $headers);
+    }
+
+    if (empty($this->error)) {
+      // @todo remove cache, use default cache('default')
+      // Don't save $this->results, because the object will lose steam resource
+      // when caching, but it will lose response.
+      \Drupal::cache()
+        ->set($cache_options[$params['date-range']]['cid'], $this->feedResults[$params['date-range']], $cache_options[$params['date-range']]['expire']);
+    }
+
+    return (empty($this->error));
+  }
+
+
+  /**
+   * Execute a query.
+   *
+   * @param string $url
+   *   URL value.
+   * @param array $params
+   *   Array of parameters.
+   * @param array $headers
+   *   Array of headers.
+   * @param string $method
+   *   HTTM method.
+   */
+  protected function requestResults($url, $params = array(), $headers = array(), $method = 'GET') {
+    $options = [
+      'method' => $method,
+      'headers' => $headers,
+    ];
+
+    if (count($params) > 0) {
+      if ($method == 'GET') {
+        $url .= '?' . UrlHelper::buildQuery($params);
+      }
+      else {
+        $options['body'] = UrlHelper::buildQuery($params);
+      }
+    }
+
+    $client = \Drupal::httpClient();
+    $this->response = $client->request($method, $url, $options);
+
+    if ($this->response->getStatusCode() == '200') {
+      $this->feedResults[$params['date-range']] = json_decode($this->response->getBody()->__toString());
+    }
+    else {
+      // Data is undefined if the connection failed.
+      if (empty($this->response->getBody()->__toString())) {
+        // @todo check it!!! it's temp code.
+        $this->response->setBody('');
+      }
+      $error_vars = [
+        '@code' => $this->response->getStatusCode(),
+        '@message' => $this->response->getReasonPhrase(),
+        '@details' => strip_tags($this->response->getBody()->__toString()),
+      ];
+      $this->error = $this->t('Code: @code.  Error: @message.  Message: @details', $error_vars);
+      \Drupal::logger('google_analytics_counter')
+        ->error('Code: @code.  Error: @message.  Message: @details', $error_vars);
+    }
+  }
+
 
   /**
    * Execute a query.
@@ -560,17 +667,7 @@ class GoogleAnalyticsCounterFeed {
     else {
       $parameters['sort'] = $params['sort_metric'];
     }
-    $start_date = '';
-    if (empty($params['start_date']) || !is_int($params['start_date'])) {
-      // Use the day that Google Analytics was released 2005-01-01.
-      $start_date = '2005-01-01';
-    }
-    elseif (is_int($params['start_date'])) {
-      // Assume a Unix timestamp.
-      $start_date = date('Y-m-d', $params['start_date']);
-    }
 
-    $parameters['start-date'] = $start_date;
 
     $end_date = '';
     if (empty($params['end_date']) || !is_int($params['end_date'])) {
@@ -593,13 +690,44 @@ class GoogleAnalyticsCounterFeed {
     $parameters['start-index'] = $params['start_index'];
     $parameters['max-results'] = $params['max_results'];
 
-    // DEBUG:
-    // drush_print_r($parameters);
 
-    $this->setQueryPath('data/ga');
-    if ($this->query($this->queryPath, $parameters, 'GET', $this->generateAuthHeader(), $cache_options)) {
-      $this->sanitizeReport();
+
+    ///////////////////////////////////////
+    /// Handle multiple date ranges.
+    /// - For each date range, we want to pull the results and add them to the nodes.
+    /// -- We will make a call to Googles API for each one.
+    /// -- We will store the information in a temp storage.
+    /// -- We will make a single DB call per node to update the database.
+    ///////////////////////////////////////
+
+    foreach($params['date_ranges'] as $key => $value) {
+      $start_date = strtotime($value);
+      $parameters['start-date'] = date('Y-m-d',$start_date);
+      $parameters['date-range'] = $key;
+      $this->setQueryPath('data/ga');
+      if ($this->queryResults($this->queryPath, $parameters, 'GET', $this->generateAuthHeader(), $cache_options)) {
+        //TODO What do we need to do if this fails? We want to ensure Sanitize report should be called.
+      }
     }
+    $this->sanitizeReport();
+//
+//    $start_date = '';
+//    if (empty($params['start_date']) || !is_int($params['start_date'])) {
+//      // Use the day that Google Analytics was released 2005-01-01.
+//      $start_date = '2005-01-01';
+//    }
+//    elseif (is_int($params['start_date'])) {
+//      // Assume a Unix timestamp.
+//      $start_date = date('Y-m-d', $params['start_date']);
+//    }
+//
+//    $parameters['start-date'] = $start_date;
+
+
+//    $this->setQueryPath('data/ga');
+//    if ($this->query($this->queryPath, $parameters, 'GET', $this->generateAuthHeader(), $cache_options)) {
+//      $this->sanitizeReport();
+//    }
     return $this;
   }
 
@@ -608,22 +736,26 @@ class GoogleAnalyticsCounterFeed {
    */
   protected function sanitizeReport() {
     // Named keys for report values.
-    $this->results->rawRows = isset($this->results->rows) ? $this->results->rows : [];
-    $this->results->rows = [];
-    foreach ($this->results->rawRows as $row_key => $row_value) {
-      foreach ($row_value as $item_key => $item_value) {
-        $this->results->rows[$row_key][str_replace('ga:', '', $this->results->columnHeaders[$item_key]->name)] = $item_value;
-      }
-    }
-    unset($this->results->rawRows);
 
-    // Named keys for report totals.
-    $this->results->rawTotals = $this->results->totalsForAllResults;
-    $this->results->totalsForAllResults = [];
-    foreach ($this->results->rawTotals as $row_key => $row_value) {
-      $this->results->totalsForAllResults[str_replace('ga:', '', $row_key)] = $row_value;
+    foreach($this->feedResults as $date_range => $range_results){
+      $range_results->rawRows = isset($range_results->rows) ? $range_results->rows : [];
+      $range_results->rows = [];
+      foreach ($range_results->rawRows as $row_key => $row_value) {
+        foreach ($row_value as $item_key => $item_value) {
+          $this->feedResults[$date_range]->rows[$row_key][str_replace('ga:', '', $range_results->columnHeaders[$item_key]->name)] = $item_value;
+        }
+      }
+      unset($this->feedResults[$date_range]->rawRows);
+
+      // Named keys for report totals.
+      $this->feedResults[$date_range]->rawTotals = $range_results->totalsForAllResults;
+      $this->feedResults[$date_range]->totalsForAllResults = [];
+      foreach ($this->feedResults[$date_range]->rawTotals as $row_key => $row_value) {
+        $this->feedResults[$date_range]->totalsForAllResults[str_replace('ga:', '', $row_key)] = $row_value;
+      }
+      unset($this->feedResults[$date_range]->rawTotals);
     }
-    unset($this->results->rawTotals);
+
   }
 
 }
