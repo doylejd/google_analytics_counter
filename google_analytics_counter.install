@@ -1,0 +1,232 @@
+<?php
+
+/**
+ * @file
+ * Update, and uninstall functions for the Google Analytics Counter module.
+ */
+
+use Drupal\Core\Config\FileStorage;
+use Drupal\Core\Database\Database;
+use Drupal\Core\Url;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\google_analytics_counter\GoogleAnalyticsCounterHelper;
+
+/**
+ * Implements hook_requirements().
+ */
+function google_analytics_counter_requirements($phase) {
+  // Only check requirements during the run-time (aka Status Report).
+  if ($phase != 'runtime') {
+    return [];
+  }
+
+  $requirements = [];
+  // Verify that the user has authenticated with Google Analytics.
+  // If not, display a warning on the status page.
+  $t_args = [
+    ':href' => Url::fromRoute('google_analytics_counter.admin_auth_form', [], ['absolute' => TRUE])
+      ->toString(),
+    '@href' => 'authentication form',
+  ];
+  /* @var \Drupal\google_analytics_counter\GoogleAnalyticsCounterManagerInterface $manager */
+  $manager = Drupal::service('google_analytics_counter.manager');
+
+  if ($manager->isAuthenticated() === TRUE) {
+    $requirements['google_analytics_counter_authentication'] = [
+      'title' => t('Google Analytics Counter'),
+      'description' => t('You can revoke authentication on the <a href=:href>@href</a>.', $t_args),
+      'severity' => REQUIREMENT_OK,
+      'value' => t('Google Analytics have been authenticated.'),
+    ];
+  }
+  else {
+    $requirements['google_analytics_counter_authentication'] = [
+      'title' => t('Google Analytics Counter'),
+      'description' => t('Authenticate with Google on the <a href=:href>@href</a>.', $t_args),
+      'severity' => REQUIREMENT_ERROR,
+      'value' => t('Google Analytics have not been authenticated.'),
+    ];
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implements hook_schema().
+ */
+function google_analytics_counter_schema() {
+  $schema['google_analytics_counter'] = [
+    'description' => 'Stores URIs and pageviews from Google Analytics.',
+    'fields' => [
+      'pagepath_hash' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'description' => 'md5 hash of the relative page path.',
+        'not null' => TRUE,
+      ],
+      'pagepath' => [
+        'type' => 'varchar',
+        'length' => 2048,
+        'description' => 'Relative page path, for example "node/1" or "contact", as stored by GA.',
+        'not null' => TRUE,
+      ],
+      'pageviews' => [
+        'type' => 'int',
+        'size' => 'big',
+        'description' => 'Pageview count.',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+      ],
+    ],
+    'primary key' => ['pagepath_hash'],
+    'indexes' => [
+      'pagepath' => [['pagepath', 20]],
+      'pageviews' => ['pageviews'],
+    ],
+  ];
+
+  $schema['google_analytics_counter_storage'] = [
+    'description' => 'Stores node ids for nodes only that have pageview totals.',
+    'fields' => [
+      'nid' => [
+        'description' => 'Node IDs',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'pageview_total' => [
+        'description' => 'Total pageview counts',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+    ],
+    'indexes' => [
+      'nid' => ['nid'],
+      'pageview_total' => ['pageview_total'],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function google_analytics_counter_install() {
+  GoogleAnalyticsCounterHelper::gacSaveTypeConfig();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function google_analytics_counter_uninstall() {
+
+  // Revoke the state values.
+  GoogleAnalyticsCounterHelper::gacDeleteState();
+
+  // Remove queued items from the database.
+  GoogleAnalyticsCounterHelper::gacRemoveQueuedItems();
+
+  // Uninstall the Google Analytics Counter field.
+  $bundles = ['node'];
+
+  $fields['field_google_analytics_counter'] = [
+    'entity_type' => 'node',
+  ];
+
+  // Delete the field config.
+  foreach ($bundles as $bundle) {
+    foreach ($fields as $field_name => $config) {
+      $field = FieldConfig::loadByName($config['entity_type'], $bundle, $field_name);
+      if (!empty($field)) {
+        $field->delete();
+      }
+    }
+  }
+
+  // Delete the field storage config.
+  foreach ($fields as $field_name => $config) {
+    $field_storage = FieldStorageConfig::loadByName($config['entity_type'], $field_name);
+    if (!empty($field_storage)) {
+      $field_storage->delete();
+    }
+  }
+}
+
+/**
+ * Issue #2978896: Use Google developers page for Google Quotas.
+ */
+function google_analytics_counter_update_8002() {
+  \Drupal::state()->deleteMultiple([
+    'google_analytics_counter.dayquota_request',
+    'google_analytics_counter.dayquota_timestamp',
+    'google_analytics_counter.chunk_process_time',
+    'google_analytics_counter.chunk_node_process_time',
+  ]);
+}
+
+/**
+ * Issue #2978896: Remove dayquota_timestamp.
+ */
+function google_analytics_counter_update_8003() {
+  \Drupal::state()->delete('google_analytics_counter.dayquota_timestamp');
+}
+
+/**
+ * Issue #3003910: Remove overwrite_statistics configuration.
+ */
+function google_analytics_counter_update_8004() {
+  $config_factory = \Drupal::configFactory();
+  $config_factory->getEditable('google_analytics_counter.settings')
+    ->clear('general_settings.overwrite_statistics')
+    ->save();
+}
+
+/**
+ * Issue #3003875: Remove profile_id_prefill configuration.
+ */
+function google_analytics_counter_update_8005() {
+  $config_factory = \Drupal::configFactory();
+  $config_factory->getEditable('google_analytics_counter.settings')
+    ->clear('general_settings.profile_id_prefill')
+    ->save();
+}
+
+/**
+ * Issue #3009673: Add the Google Analytics Counter field to existing installations.
+ */
+function google_analytics_counter_update_8006() {
+  // Check if field storage exists.
+  $config = FieldStorageConfig::loadByName('node', 'field_google_analytics_counter');
+  if (isset($config)) {
+    return NULL;
+  }
+
+  // Obtain configuration from yaml files.
+  $config_path = 'modules/contrib/google_analytics_counter/config/optional';
+  $source      = new FileStorage($config_path);
+
+  // Obtain the storage manager for field storage bases.
+  // Create the new field configuration from the yaml configuration and save.
+  \Drupal::entityTypeManager()->getStorage('field_storage_config')
+    ->create($source->read('field.storage.node.field_google_analytics_counter'))
+    ->save();
+}
+
+/**
+ * Issue #3009673: Remove stale queued items from the database.
+ */
+function google_analytics_counter_update_8007() {
+  GoogleAnalyticsCounterHelper::gacRemoveQueuedItems();
+}
+
+/**
+ * Issue #3020811: Move Configure types form into its own tab.
+ */
+function google_analytics_counter_update_8008() {
+  GoogleAnalyticsCounterHelper::gacSaveTypeConfig();
+}
+
