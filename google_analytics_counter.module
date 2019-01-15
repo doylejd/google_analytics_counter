@@ -135,14 +135,22 @@ function google_analytics_counter_page_attachments(&$page) {
  * Implements hook_form_BASE_FORM_ID_alter() for node_form().
  */
 function google_analytics_counter_form_node_form_alter(&$form, FormStateInterface $form_state) {
-  // Make the google analytics counter field readonly.
-  isset($form['field_google_analytics_counter']) ? $form['field_google_analytics_counter']['widget'][0]['value']['#attributes']['readonly'] = 'readonly' : NULL;
+  $config = \Drupal::config('google_analytics_counter.settings');
+  $date_ranges = json_decode($config->get('general_settings.start_date'));
 
-  // Display Google Analytics Counter field only to roles with the permission.
-  $fields_requiring_permission = [
-    'field_google_analytics_counter',
-  ];
-  foreach ($fields_requiring_permission as $field_requiring_permission) {
-    $form[$field_requiring_permission]['#access'] = \Drupal::currentUser()->hasPermission('access content');
+  // Loop through all date ranges currently enabled to re-evaluate fields.
+  // TODO: Look at improving this. Semi disconected and non-intuitive.
+  foreach($date_ranges as $date => $date_value){
+    $date_val = preg_replace('/[^\da-z]/i', '_', $date);
+    $field_name = 'field_gac_' . $date_val;
+    // Make the google analytics counter field readonly.
+    if (isset($form[$field_name])) {
+      $form[$field_name]['widget'][0]['value']['#attributes']['readonly'] = 'readonly';
+      $form[$field_name]['#access'] = \Drupal::currentUser()->hasPermission('access content');
+    }
   }
+}
+
+function google_analytics_counter_form_alter(&$form, FormStateInterface $form_state) {
+  $test = $form;
 }

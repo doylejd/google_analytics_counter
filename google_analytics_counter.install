@@ -11,6 +11,7 @@ use Drupal\Core\Url;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\google_analytics_counter\GoogleAnalyticsCounterHelper;
+use Drupal\google_analytics_counter\GoogleAnalyticsCounterCustomFieldGenerator;
 
 /**
  * Implements hook_requirements().
@@ -79,6 +80,12 @@ function google_analytics_counter_schema() {
         'default' => 0,
         'not null' => TRUE,
       ],
+      'date_range' => [
+        'type' => 'varchar',
+        'length' => '2048',
+        'description' => 'Date Range for this result. This allows multiple date range to be stored for each node.',
+        'not null' => TRUE,
+      ],
     ],
     'primary key' => ['pagepath_hash'],
     'indexes' => [
@@ -90,6 +97,12 @@ function google_analytics_counter_schema() {
   $schema['google_analytics_counter_storage'] = [
     'description' => 'Stores node ids for nodes only that have pageview totals.',
     'fields' => [
+      'node_hash' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'description' => 'md5 hash of the node and date.',
+        'not null' => TRUE,
+      ],
       'nid' => [
         'description' => 'Node IDs',
         'type' => 'int',
@@ -102,10 +115,17 @@ function google_analytics_counter_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
       ],
+      'date_range' => [
+        'type' => 'varchar',
+        'length' => '2048',
+        'description' => 'Date Range for this result. This allows multiple date range to be stored for each node.',
+        'not null' => TRUE,
+      ],
     ],
     'indexes' => [
       'nid' => ['nid'],
       'pageview_total' => ['pageview_total'],
+      'date_range' => ['date_range'],
     ],
   ];
 
@@ -130,6 +150,11 @@ function google_analytics_counter_uninstall() {
   // Remove queued items from the database.
   GoogleAnalyticsCounterHelper::gacRemoveQueuedItems();
 
+  google_analytics_counter_remove_legacy_field();
+}
+
+
+function google_analytics_counter_remove_legacy_field() {
   // Uninstall the Google Analytics Counter field.
   $bundles = ['node'];
 
@@ -230,3 +255,99 @@ function google_analytics_counter_update_8008() {
   GoogleAnalyticsCounterHelper::gacSaveTypeConfig();
 }
 
+/**
+ * Issue #000000: Module upgrades to allow for multiple date ranges:
+ * - Adds date_range fields to google_analytics_counter and google_analytics_counter_storage modules.
+ * - Remove the legacy field of field_google_analytics_counter to prepare for new values.
+ * - TODO: What do we do with the date ranges? Do we ignore custom date ranges for now?
+ * - Loop through content types and add new fields based on date_range config.
+ */
+function google_analytics_counter_update_8009() {
+  // Drop data from the google_analytics_counter and google_analytics_counter_storage tables
+  \Drupal::database()
+    ->query("DELETE FROM {google_analytics_counter} WHERE pageviews >= 0 LIMIT 400000");
+  \Drupal::database()
+    ->query("DELETE FROM {google_analytics_counter_storage} WHERE pageview_total >= 0 LIMIT 400000");
+
+  // Remove queued items from the database.
+  GoogleAnalyticsCounterHelper::gacRemoveQueuedItems();
+
+  // Remove the legacy field_google_analytics_counter from all nodes:
+  google_analytics_counter_remove_legacy_field();
+
+  // Add date_range column to the google_analytics_counter and google_analytics_counter_storage custom tables.
+  $schema = Database::getConnection()->schema();
+
+  // Add the dae_range to the google_analytics_counter table.
+  if (!$schema->fieldExists('google_analytics_counter', 'date_range')) {
+    $spec = [
+      'type' => 'varchar',
+      'length' => '2048',
+      'description' => 'Date Range for this result. This allows multiple date range to be stored for each alias.',
+      'not null' => TRUE,
+    ];
+    $schema->addField('google_analytics_counter', 'date_range', $spec);
+  }
+
+  // Add the dae_range to the google_analytics_counter table.
+  if (!$schema->fieldExists('google_analytics_counter_storage', 'date_range')) {
+    $spec = [
+      'type' => 'varchar',
+      'length' => '2048',
+      'description' => 'Date Range for this result. This allows multiple date range to be stored for each node.',
+      'not null' => TRUE,
+    ];
+    $schema->addField('google_analytics_counter_storage', 'date_range', $spec);
+  }
+
+  // Add the dae_range to the google_analytics_counter table.
+  if (!$schema->fieldExists('google_analytics_counter_storage', 'node_hash')) {
+    $spec = [
+      'type' => 'varchar',
+      'length' => 32,
+      'description' => 'md5 hash of the node and date.',
+      'not null' => TRUE,
+    ];
+    $schema->addField('google_analytics_counter_storage', 'node_hash', $spec);
+  }
+
+
+
+  // Update date range settings to proper format.
+  // Load start_date, check if its already a json_encoded. If not, json encode it.
+  $config_factory = \Drupal::configFactory();
+  $settings_config = $config_factory->getEditable('google_analytics_counter.settings');
+  $start_date = json_decode($settings_config->get('general_settings.start_date'));
+  if (json_last_error() != JSON_ERROR_NONE) {
+    $start_date = $settings_config->get('general_settings.start_date');
+    $date_range = json_encode([$start_date => $start_date]);
+    $settings_config->set('general_settings.start_date', $date_range);
+    $start_date = json_decode($date_range);
+  }
+
+  // Create new fields for configured date range.
+  // TODO: Check edge case for custom configured time series.
+  $content_types = \Drupal::service('entity.manager')->getStorage('node_type')->loadMultiple();
+  $custom_field = $date = \Drupal::service('google_analytics_counter.custom_field_generator');
+  // Loop through all date ranges currently enabled to re-evaluate fields.
+  foreach($start_date as $date => $date_value){
+    foreach ($content_types as $machine_name => $content_type) {
+      $content_type_settings = $settings_config->get("general_settings.gac_type_$machine_name");
+      $key = "gac_type_$machine_name";
+      // Get the NodeTypeInterface $type from gac_type_{content_type}.
+      $type = \Drupal::service('entity.manager')
+        ->getStorage('node_type')
+        ->load(substr($key, 9));
+
+      // Add the field if the field has been checked.
+      if ($content_type_settings == 1) {
+        $custom_field->gacPreAddField($type, $key, 1, $date);
+      }
+
+    }
+  }
+
+
+
+
+}
