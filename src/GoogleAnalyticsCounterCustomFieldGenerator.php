@@ -87,16 +87,17 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
    * @param $type
    * @param $key
    * @param $value
+   * @param $date
    *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacPreAddField($type, $key, $value) {
+  public function gacPreAddField($type, $key, $value, $date) {
     $config_factory = \Drupal::configFactory();
 
     // Add the field.
-    $this->gacAddField($type);
+    $this->gacAddField($type, $date);
 
     // Update the gac_type_{content_type} configuration.
     $config_factory->getEditable('google_analytics_counter.settings')
@@ -117,32 +118,36 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacAddField(NodeTypeInterface $type, $label = 'Google Analytics Counter') {
+  public function gacAddField(NodeTypeInterface $type, $date, $label = 'Google Analytics Counter') {
 
+    $date_val = preg_replace('/[^\da-z]/i', '_', $date);
     // Check if field storage exists.
-    $config = FieldStorageConfig::loadByName('node', 'field_google_analytics_counter');
+    $config = FieldStorageConfig::loadByName('node', 'field_gac_' . $date_val);
     if (!isset($config)) {
       // Obtain configuration from yaml files
       $config_path = 'modules/contrib/google_analytics_counter/config/optional';
       $source = new FileStorage($config_path);
+      $field_config = $source->read('field.storage.node.field_gac');
+      $field_config['id'] = $field_config['id'] . '_' . $date_val;
+      $field_config['field_name'] = $field_config['field_name'] . '_' . $date_val;
 
       // Obtain the storage manager for field storage bases.
       // Create the new field configuration from the yaml configuration and save.
       \Drupal::entityTypeManager()->getStorage('field_storage_config')
-        ->create($source->read('field.storage.node.field_google_analytics_counter'))
+        ->create($field_config)
         ->save();
     }
 
     // Add the checked fields.
-    $field_storage = FieldStorageConfig::loadByName('node', 'field_google_analytics_counter');
-    $field = FieldConfig::loadByName('node', $type->id(), 'field_google_analytics_counter');
+    $field_storage = FieldStorageConfig::loadByName('node', 'field_gac'. '_' . $date_val);
+    $field = FieldConfig::loadByName('node', $type->id(), 'field_gac'. '_' . $date_val);
     if (empty($field)) {
       $field = FieldConfig::create([
         'field_storage' => $field_storage,
         'bundle' => $type->id(),
-        'label' => $label,
-        'description' => t('This field stores Google Analytics pageviews.'),
-        'field_name' => 'field_google_analytics_counter',
+        'label' => $label. ' ' . $date,
+        'description' => t('This field stores Google Analytics pageviews for the date range of ' . $date . '.' ),
+        'field_name' => 'field_gac' . '_' . $date_val,
         'entity_type' => 'node',
         'settings' => array('display_summary' => TRUE),
       ]);
@@ -190,10 +195,10 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
    *
    * @throws \Drupal\Core\Entity\EntityStorageException
    */
-  public function gacPreDeleteField($type, $key) {
+  public function gacPreDeleteField($type, $key, $date) {
     // Delete the field.
     // Todo: Remove this method.
-    $this->gacDeleteField($type);
+    $this->gacDeleteField($type, $date);
   }
 
   /**
@@ -207,15 +212,20 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
    *
    * @see GoogleAnalyticsCounterConfigureTypesForm
    */
-  public function gacDeleteField(NodeTypeInterface $type) {
+  public function gacDeleteField(NodeTypeInterface $type, $date) {
     // Check if field exists on the content type.
+
+    $date_val = preg_replace('/[^\da-z]/i', '_', $date);
+
     $content_type = $type->id();
-    $config = FieldConfig::loadByName('node', $content_type, 'field_google_analytics_counter');
+    $field_name = 'field_gac_' . $date_val;
+
+    $config = FieldConfig::loadByName('node', $content_type, $field_name);
     if (!isset($config)) {
       return NULL;
     }
     // Delete the field from the content type.
-    FieldConfig::loadByName('node', $content_type, 'field_google_analytics_counter')->delete();
+    FieldConfig::loadByName('node', $content_type, $field_name)->delete();
   }
 
   /**

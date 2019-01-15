@@ -261,14 +261,17 @@ class GoogleAnalyticsCounterController extends ControllerBase {
       '#value' => $this->t("A pagepath can include paths that don't have an NID, like /search."),
     ];
 
-    $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter');
+    $date_ranges = $this->getDateRanges();
+    $headers[] = $this->t('Pagepath');
+    $rows = [];
+    foreach($date_ranges as $key => $value) {
+      $headers[] = $this->t($key . ' Pageviews');
+      $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter', $rows, $key);
+    }
     // Display table.
     $build['drupal_info']['top_twenty_results']['counter']['table'] = [
       '#type' => 'table',
-      '#header' => [
-        $this->t('Pagepath'),
-        $this->t('Pageviews'),
-      ],
+      '#header' => $headers,
       '#rows' => $rows,
     ];
 
@@ -288,7 +291,12 @@ class GoogleAnalyticsCounterController extends ControllerBase {
       '#value' => $this->t('A pageview total may be greater than PAGEVIEWS because a pageview total includes page aliases, node/id, and node/id/ URIs.'),
     ];
 
-    $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter_storage');
+    $date_ranges = $this->getDateRanges();
+    $headers[] = $this->t('Pagepath');
+    foreach($date_ranges as $key => $value) {
+      $headers[] = $this->t($key . ' Pageviews');
+//      $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter_storage', $key);
+    }
     // Display table.
     $build['drupal_info']['top_twenty_results']['storage']['table'] = [
       '#type' => 'table',
@@ -366,4 +374,21 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     }
   }
 
+
+  /**
+   * Returns a list of configured date ranges.
+   *
+   * @return array
+   *   Date ranges.
+   */
+  protected function getDateRanges() {
+    $config = $this->config;
+    $date_ranges = [];
+    if (!empty($config->get('general_settings.start_date'))) {
+      $date_range_val = $config->get('general_settings.start_date');
+      $date_ranges = (array) json_decode($date_range_val);
+    }
+    return $date_ranges;
+
+  }
 }

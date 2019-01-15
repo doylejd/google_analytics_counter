@@ -50,8 +50,10 @@ interface GoogleAnalyticsCounterMessageManagerInterface {
    *
    * @param string $table
    *   The table from which the results are selected.
+   * @param string $date_range
+   *   Defines the date range to pull results for.
    *
    * @return mixed
    */
-  public function getTopTwentyResults($table);
+  public function getTopTwentyResults($table, $rows, $date_range);
 }

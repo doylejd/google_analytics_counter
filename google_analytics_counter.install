@@ -79,6 +79,12 @@ function google_analytics_counter_schema() {
         'default' => 0,
         'not null' => TRUE,
       ],
+      'date_range' => [
+        'type' => 'varchar',
+        'length' => '2048',
+        'description' => 'Date Range for this result. This allows multiple date range to be stored for each node.',
+        'not null' => TRUE,
+      ],
     ],
     'primary key' => ['pagepath_hash'],
     'indexes' => [
@@ -228,5 +234,12 @@ function google_analytics_counter_update_8007() {
  */
 function google_analytics_counter_update_8008() {
   GoogleAnalyticsCounterHelper::gacSaveTypeConfig();
+}
+
+/**
+ * Issue #3020811: Move Configure types form into its own tab.
+ */
+function google_analytics_counter_update_8009() {
+  //TODO: Implement update hook to remove old field.
 }
 
