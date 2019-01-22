@@ -148,7 +148,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    *
    * @return mixed
    */
-  public function getTotalResults() {
+  public function getTotalResults($date_range) {
     //Set Parameters for the Query to Google
     $parameters = $this->setParameters();
 
@@ -159,11 +159,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     $feed = $this->gacGetFeed($parameters, $cache_options);
 
     // The total number of pageViews for this profile from start_date to end_date.
-    // TODO - This really should not combine pageviews for all date ranges, but lets circle back to it.
-    $total_results = 0;
-    foreach($parameters['date_ranges'] as $key => $value){
-      $total_results += $feed->feedResults[$key]->totalsForAllResults['pageviews'];
-    }
+    $total_results = $feed->feedResults[$date_range]->totalsForAllResults['pageviews'];
 
     // Set the total number of pagePaths for this profile from start_date to end_date.
     $total_results = $this->state->set('google_analytics_counter.total_paths', $total_results);
@@ -195,7 +191,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    * @return \Drupal\google_analytics_counter\GoogleAnalyticsCounterFeed|object
    *   A new GoogleAnalyticsCounterFeed object
    */
-  public function reportData($parameters = [], $cache_options = []) {
+  public function reportData($parameters = [], $cache_options = [], $date_range = 0) {
     $config = $this->config;
 
     //Set Parameters for the Query to Google
@@ -207,34 +203,20 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     //Instantiate a new GoogleAnalyticsCounterFeed object.
     $feed = $this->gacGetFeed($parameters, $cache_options);
 
-
-
-    // TODO - Need to clean this up, just patching it together so it work for the moment.
-    $total_pageviews = 0;
-    $total_results = 0;
-    $date_range = '';
-    foreach($parameters['date_ranges'] as $key => $value){
-      $date_range = $key;
-      $total_pageviews += $feed->feedResults[$key]->totalsForAllResults['pageviews'];
-      $total_results += $feed->feedResults[$key]->totalResults;
-    }
-
-
-
     // The last time the Data was refreshed by Google. Not always available from Google.
     // We can use the last date_range value feed to get this information.
     if (!empty($feed->results->dataLastRefreshed)) {
-      $this->state->set('google_analytics_counter.data_last_refreshed', $feed->feedResults[$key]->dataLastRefreshed);
+      $this->state->set('google_analytics_counter.data_last_refreshed', $feed->feedResults[$date_range]->dataLastRefreshed);
     }
 
     // The first selfLink query to Google. Helpful for debugging in the dashboard.
-    $this->state->set('google_analytics_counter.most_recent_query', $feed->feedResults[$key]->selfLink);
+    $this->state->set('google_analytics_counter.most_recent_query', $feed->feedResults[$date_range]->selfLink);
 
     // The total number of pageViews for this profile from start_date to end_date.
-    $this->state->set('google_analytics_counter.total_pageviews', $total_pageviews);
+    $this->state->set('google_analytics_counter.total_pageviews', $feed->feedResults[$date_range]->totalsForAllResults['pageviews']);
 
     // The total number of pagePaths for this profile from start_date to end_date.
-    $this->state->set('google_analytics_counter.total_paths', $total_results);
+    $this->state->set('google_analytics_counter.total_paths',  $feed->feedResults[$date_range]->totalResults);
 
     // The number of results from Google Analytics in one request.
     $chunk = $config->get('general_settings.chunk_to_fetch');
@@ -281,8 +263,12 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    *
    * @throws \Exception
    */
-  public function gacUpdatePathCounts($index = 0) {
-    $feed = $this->reportData($index);
+  public function gacUpdatePathCounts($index = 0, $date_range = 0) {
+    if ($date_range = 0) {
+      return;
+    }
+
+    $feed = $this->reportData($index, $date_range);
 
     $count = 0;
     foreach ($feed->feedResults as $daterange => $results) {
