@@ -63,39 +63,47 @@ function google_analytics_counter_cron() {
   /* @var \Drupal\google_analytics_counter\GoogleAnalyticsCounterAppManagerInterface $app_manager */
   $app_manager = \Drupal::service('google_analytics_counter.app_manager');
 
-  try {
-    // Fetch the total results from Google first.
-    $app_manager->getTotalResults();
-    $total_results = $state->get('google_analytics_counter.total_paths');
+    try {
+      // Fetch the total results from Google first.
 
-    // Create queue fetch items from the total results divided into chunks.
-    for ($index = 0; $index < $total_results / $config->get('general_settings.chunk_to_fetch'); $index++) {
-      // Add a queue item to fetch for all chunks.
-      $queue->createItem([
-        'type' => 'fetch',
-        'index' => $index,
-      ]);
+      // Load up date_ranges configured in settings.
+      // Enhancements to support multiple time slots.
+      $date_range_val = $config->get('general_settings.start_date');
+      $date_ranges = (array) json_decode($date_range_val);
+      foreach($date_ranges as $date => $date_range) {
+        $app_manager->getTotalResults($date_range);
+        $total_results = $state->get('google_analytics_counter.total_paths');
+
+        // Create queue fetch items from the total results divided into chunks.
+        for ($index = 0; $index < $total_results / $config->get('general_settings.chunk_to_fetch'); $index++) {
+          // Add a queue item to fetch for all chunks.
+          $queue->createItem([
+            'type' => 'fetch',
+            'index' => $index,
+            'date_range' => $date_range
+          ]);
+        }
+      }
+
+      // Select all the published nodes and create queue count items.
+      $query = $database->select('node_field_data', 'nfd');
+      $query->fields('nfd', ['nid', 'type', 'vid']);
+      $query->condition('status', NodeInterface::PUBLISHED);
+      $query->addTag('google_analytics_counter');
+      $result = $query->execute();
+      while ($record = $result->fetchAssoc()) {
+        $queue->createItem([
+          'type' => 'count',
+          'nid' => $record['nid'],
+          'bundle' => $record['type'],
+          'vid' => $record['vid']
+        ]);
+      }
+    } catch (RuntimeException $e) {
+      \Drupal::logger('google_analytics_counter')
+        ->alert('Cron experienced a problem: ' . $e->getMessage());
     }
 
-    // Select all the published nodes and create queue count items.
-    $query = $database->select('node_field_data', 'nfd');
-    $query->fields('nfd', ['nid', 'type', 'vid']);
-    $query->condition('status', NodeInterface::PUBLISHED);
-    $query->addTag('google_analytics_counter');
-    $result = $query->execute();
-    while ($record = $result->fetchAssoc()) {
-      $queue->createItem([
-        'type' => 'count',
-        'nid' => $record['nid'],
-        'bundle' => $record['type'],
-        'vid' => $record['vid']
-      ]);
-    }
-  }
-  catch (RuntimeException $e) {
-    \Drupal::logger('google_analytics_counter')
-      ->alert('Cron experienced a problem: ' . $e->getMessage());
-  }
 }
 
 /**

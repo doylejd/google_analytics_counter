@@ -15,7 +15,7 @@ interface GoogleAnalyticsCounterAppManagerInterface {
    *
    * @return mixed
    */
-  public function getTotalResults();
+  public function getTotalResults($date_range);
 
   /**
    * Request report data.
@@ -84,6 +84,7 @@ interface GoogleAnalyticsCounterAppManagerInterface {
    * @return array
    */
   public function setCacheOptions(array $parameters);
+
 
 //  /**
 //   * Get the count of pageviews for a path.
