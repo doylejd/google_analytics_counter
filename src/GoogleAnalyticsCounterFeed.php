@@ -153,6 +153,7 @@ class GoogleAnalyticsCounterFeed {
    *   Client secret for Web application from Google API Console.
    * @param string $redirect_uri
    *   Callback uri.
+   * @param null $refresh_token
    */
   protected function fetchToken($client_id, $client_secret, $redirect_uri, $refresh_token = NULL) {
     if ($refresh_token) {
@@ -192,25 +193,6 @@ class GoogleAnalyticsCounterFeed {
       if (!$this->refreshToken) {
         $this->refreshToken = $decoded_response['refresh_token'];
       }
-    }
-    else {
-      $error_vars = [
-        '@code' => $this->response->getStatusCode(),
-        '@message' => $this->response->getReasonPhrase(),
-        '@details' => strip_tags($this->response->getbody()->__toString()),
-      ];
-      $this->error = $this->t('Code: @code.  Error: @message.  Message: @details', $error_vars);
-      \Drupal::logger('google_analytics_counter')
-        ->error('Code: @code.  Error: @message.  Message: @details', $error_vars);
-      // Todo: Inject the messenger. Add this class to the container.
-      drupal_set_message($this->t('Code: @code.  Error: @message.  Message: @details', $error_vars), 'error');
-
-      $t_args = [
-        ':href' => Url::fromRoute('google_analytics_counter.admin_auth_revoke', [], ['absolute' => TRUE])
-          ->toString(),
-        '@href' => 'revoking Google authentication',
-      ];
-      drupal_set_message($this->t("If there's a problem with OAUTH authentication, try <a href=:href>@href</a>.", $t_args), 'warning');
     }
   }
 
@@ -342,6 +324,15 @@ class GoogleAnalyticsCounterFeed {
 
   /**
    * Public query method for all Core Reporting API features.
+   *
+   * @param $url
+   * @param $params
+   * @param $method
+   * @param $headers
+   * @param array $cache_options
+   *
+   * @return bool
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   public function query($url, $params, $method, $headers, $cache_options = array()) {
     $params_defaults = [
@@ -398,6 +389,9 @@ class GoogleAnalyticsCounterFeed {
    *   Array of headers.
    * @param string $method
    *   HTTM method.
+   *
+   * @return \Symfony\Component\HttpFoundation\RedirectResponse
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   protected function request($url, $params = array(), $headers = array(), $method = 'GET') {
     $options = [
@@ -415,14 +409,21 @@ class GoogleAnalyticsCounterFeed {
     }
 
     $client = \Drupal::httpClient();
-    $this->response = $client->request($method, $url, $options);
+    try {
+      $this->response = $client->request($method, $url, $options);
+    }
+    catch (\Exception $e) {
+      if ($e->getCode() == 403) {
+        return new RedirectResponse(Url::fromRoute('google_analytics_counter.admin_auth_form', [], ['absolute' => TRUE])->toString());
+      }
+    }
 
     if ($this->response->getStatusCode() == '200') {
       $this->results = json_decode($this->response->getBody()->__toString());
     }
     else {
       // Data is undefined if the connection failed.
-      if (empty($this->response->getBody()->__toString())) {
+      if (isset($this->response) && empty($this->response->getBody()->__toString())) {
         // @todo check it!!! it's temp code.
         $this->response->setBody('');
       }
@@ -446,6 +447,7 @@ class GoogleAnalyticsCounterFeed {
    *   Array of cache options.
    *
    * @return $this
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   public function queryAccounts($params = array(), $cache_options = array()) {
     $this->setQueryPath('management/accounts');
@@ -462,6 +464,7 @@ class GoogleAnalyticsCounterFeed {
    *   Array of cache options.
    *
    * @return $this
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   public function queryWebProperties($params = array(), $cache_options = array()) {
     $params += [
@@ -488,6 +491,8 @@ class GoogleAnalyticsCounterFeed {
 
   /**
    * Query Management API - Segments.
+   *
+   * This method is not in use.
    */
   public function querySegments($params = array(), $cache_options = array()) {
     $this->setQueryPath('management/segments');
@@ -497,6 +502,14 @@ class GoogleAnalyticsCounterFeed {
 
   /**
    * Query Management API - Goals.
+   *
+   * This method is not in use.
+   *
+   * @param array $params
+   * @param array $cache_options
+   *
+   * @return $this
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   public function queryGoals($params = array(), $cache_options = array()) {
     $params += [
@@ -518,6 +531,7 @@ class GoogleAnalyticsCounterFeed {
    *   Array of cache options.
    *
    * @return $this
+   * @throws \GuzzleHttp\Exception\GuzzleException
    */
   public function queryReportFeed($params = [], $cache_options = []) {
 
@@ -562,8 +576,8 @@ class GoogleAnalyticsCounterFeed {
     }
     $start_date = '';
     if (empty($params['start_date']) || !is_int($params['start_date'])) {
-      // Use the day that Google Analytics was released 2005-01-01.
-      $start_date = '2005-01-01';
+      // Todo: Don't use string literal.
+      $start_date = '2019-01-01';
     }
     elseif (is_int($params['start_date'])) {
       // Assume a Unix timestamp.

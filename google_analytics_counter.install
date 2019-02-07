@@ -230,3 +230,182 @@ function google_analytics_counter_update_8008() {
   GoogleAnalyticsCounterHelper::gacSaveTypeConfig();
 }
 
+/**
+ * Issue #3025051: Google Analytics Counter field should be a number
+ */
+function google_analytics_counter_update_8009() {
+  $config_factory = \Drupal::configFactory();
+
+  // Get the content types.
+  $content_types = \Drupal::service('entity.manager')
+    ->getStorage('node_type')
+    ->loadMultiple();
+
+  $gac_types = [];
+  foreach ($content_types as $machine_name => $content_type) {
+    // Get the {gac_type_}.
+    $gac_type = $config_factory->getEditable('google_analytics_counter.settings')
+      ->get("general_settings.gac_type_$machine_name");
+
+    // Store content types that have the custom field in a lookup table.
+    if ($gac_type == 1) {
+      $gac_types[] = $machine_name;
+    }
+  }
+
+  // Uninstall the Google Analytics Counter field.
+  $bundles = ['node'];
+
+  $fields['field_google_analytics_counter'] = [
+    'entity_type' => 'node',
+  ];
+
+  // Delete the field config.
+  foreach ($bundles as $bundle) {
+    foreach ($fields as $field_name => $config) {
+      $field = FieldConfig::loadByName($config['entity_type'], $bundle, $field_name);
+      if (!empty($field)) {
+        $field->delete();
+      }
+    }
+  }
+
+  // Delete the field storage.
+  $field_storage = FieldStorageConfig::loadByName('node', 'field_google_analytics_counter');
+  if (isset($field_storage)) {
+    $field_storage->delete();
+  }
+
+  // Add the field storage as an integer this time.
+  $config_path = 'modules/contrib/google_analytics_counter/config/optional';
+  $source      = new FileStorage($config_path);
+  \Drupal::entityTypeManager()->getStorage('field_storage_config')
+    ->create($source->read('field.storage.node.field_google_analytics_counter'))
+    ->save();
+
+  // Finally, if the {gac_type_} was checked, create the field config, and check {gac_type_} again.
+  foreach ($content_types as $machine_name => $content_type) {
+    foreach ($gac_types as $key => $gac_type) {
+      if ($gac_type == $content_type->id()) {
+
+        /* @var \Drupal\google_analytics_counter\GoogleAnalyticsCounterCustomFieldGeneratorInterface $custom_field */
+        $custom_field = \Drupal::service('google_analytics_counter.custom_field_generator');
+        $custom_field->gacAddField($content_type);
+
+        $config_factory->getEditable('google_analytics_counter.settings')
+          ->set("general_settings.$machine_name", 1)
+          ->save();
+      }
+    }
+  }
+}
+
+/**
+ * Issue #3028146: Date range doesn't make any sense
+ */
+function google_analytics_counter_update_8010() {
+  $config_factory = \Drupal::configFactory();
+
+  // Get the existing fixed start date and set it to the custom_start_date.
+  $fixed_start_date = $config_factory->getEditable('google_analytics_counter.settings')
+    ->get('general_settings.fixed_start_date');
+  if (!empty($fixed_start_date)) {
+    $config_factory->getEditable('google_analytics_counter.settings')
+      ->set('general_settings.custom_start_date', $fixed_start_date)
+      ->save();
+  }
+
+  // Get the existing fixed end date and set it to the custom_end_date.
+  $fixed_end_date = $config_factory->getEditable('google_analytics_counter.settings')
+    ->get('general_settings.fixed_end_date');
+  if (!empty($fixed_end_date)) {
+    $config_factory->getEditable('google_analytics_counter.settings')
+      ->set('general_settings.custom_end_date', $fixed_end_date)
+      ->save();
+  }
+
+  // Get the existing start date.
+  $start_date = $config_factory->getEditable('google_analytics_counter.settings')
+    ->get('general_settings.start_date');
+
+  switch ($start_date) {
+    case '-1 day':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', 'yesterday')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', 'yesterday')
+        ->save();
+      break;
+
+    case '-1 week':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', '-1 week last sunday midnight')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', '-1 week next saturday')
+        ->save();
+      break;
+
+    case '-1 month':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', '30 days ago')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', '30 days ago')
+        ->save();
+      break;
+
+    case '-3 months':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', '3 months ago')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', '3 months ago')
+        ->save();
+      break;
+
+    case '-6 months':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', '6 months ago')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', '6 months ago')
+        ->save();
+      break;
+
+    case '-1 year':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', 'first day of last year')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', 'last day of last year')
+        ->save();
+      break;
+
+    case '2005-01-01':
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.start_date', 'first day of last year')
+        ->save();
+      $config_factory->getEditable('google_analytics_counter.settings')
+        ->set('general_settings.end_date', 'last day of last year')
+        ->save();
+      break;
+
+    default:
+      break;
+  }
+
+  // Clear old configuration.
+  $config_factory->getEditable('google_analytics_counter.settings')
+    ->clear('general_settings.advanced_date_checkbox')
+    ->save();
+
+  $config_factory->getEditable('google_analytics_counter.settings')
+    ->clear('general_settings.fixed_start_date')
+    ->save();
+
+  $config_factory->getEditable('google_analytics_counter.settings')
+    ->clear('general_settings.fixed_end_date')
+    ->save();
+}

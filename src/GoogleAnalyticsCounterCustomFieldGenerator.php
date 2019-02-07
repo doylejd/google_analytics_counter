@@ -151,7 +151,7 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
       // Assign widget settings for the 'default' form mode.
       entity_get_form_display('node', $type->id(), 'default')
         ->setComponent('google_analytics_counter', array(
-          'type' => 'textfield',
+          'type' => 'int',
           '#maxlength' => 255,
           '#default_value' => 0,
           '#description' => t('This field stores Google Analytics pageviews.'),
@@ -162,7 +162,7 @@ class GoogleAnalyticsCounterCustomFieldGenerator implements GoogleAnalyticsCount
       entity_get_display('node', $type->id(), 'default')
         ->setComponent('google_analytics_counter', array(
           'label' => 'hidden',
-          'type' => 'textfield',
+          'type' => 'int',
         ))
         ->save();
 

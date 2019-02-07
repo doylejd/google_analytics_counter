@@ -4,6 +4,7 @@ namespace Drupal\google_analytics_counter;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Database\Connection;
+use Drupal\Core\Datetime\DateFormatter;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\State\StateInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
@@ -41,6 +42,13 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
   protected $state;
 
   /**
+   * The date formatter service.
+   *
+   * @var \Drupal\Core\Datetime\DateFormatter
+   */
+  protected $dateFormatter;
+
+  /**
    * A logger instance.
    *
    * @var \Psr\Log\LoggerInterface
@@ -63,16 +71,18 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
    * @param \Drupal\Core\Database\Connection $connection
    *   A database connection.
    * @param \Drupal\Core\State\StateInterface $state
-   *   The state of the drupal site.
+   *   The state keyvalue collection to use.
+   * @param \Drupal\Core\Datetime\DateFormatter $date_formatter
+   *   The date formatter service.
    * @param \Psr\Log\LoggerInterface $logger
    *   A logger instance.
    * @param \Drupal\Core\Messenger\MessengerInterface $messenger
    *   The messenger service.
    */
-  public function __construct(
-    ConfigFactoryInterface $config_factory, Connection $connection, StateInterface $state, LoggerInterface $logger, MessengerInterface $messenger) {
+  public function __construct(ConfigFactoryInterface $config_factory, Connection $connection, StateInterface $state, DateFormatter $date_formatter, LoggerInterface $logger, MessengerInterface $messenger) {
     $this->config = $config_factory->get('google_analytics_counter.settings');
     $this->connection = $connection;
+    $this->dateFormatter = $date_formatter;
     $this->state = $state;
     $this->logger = $logger;
     $this->messenger = $messenger;
@@ -196,5 +206,143 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
     return $rows;
   }
 
+  /**
+   * Voluminous on screen instructions about authentication.
+   *
+   * @param $web_properties
+   *
+   * @return string
+   */
+  public function authenticationInstructions($web_properties) {
+    $t_arg = [
+      ':href' => Url::fromRoute('google_analytics_counter.admin_dashboard_form', [], ['absolute' => TRUE])
+        ->toString(),
+      '@href' => 'Dashboard',
+    ];
+    $markup_description = ($web_properties === 'unauthenticated') ?
+      '<ol><li>' . $this->t('Fill in the Client ID, Client Secret, Authorized Redirect URI, and optionally Google Project Name in the fields below.') .
+      '</li><ul><li>' . $this->t('If you don\'t have a Client ID, a Client Secret, an Authorized Redirect URI, and optionally a Google Project Name, follow the instructions in the README.md included with this module or read the <a href="https://www.drupal.org/docs/8/modules/google-analytics-counter" target="_blank">online documentation</a>.') .
+      '</li></ul><li>' . $this->t('Save configuration.') .
+      '</li><li>' . $this->t('Click Authenticate in "Authenticate with Google Analytics" above.') .
+      '</li><li>' . $this->t('If authentication with Google is successful, the ') . '<strong>' . $this->t(' Google View ') . '</strong>' . $this->t('field will list your analytics profiles.') .
+      '</li><li>' . $this->t('Select an analytics profile to collect analytics from and click Save configuration.') .
+      '</li><ul><li>' . $this->t('If you are not authenticated or if the project you are authenticating to does not have Analytics, no options are available.') .
+      '</strong></li></ul></ol></p>' :
+      '<p>' . $this->t('Client ID, Client Secret, and Authorized redirect URI can only be changed when not authenticated.') .
+      '<ol><li>' . $this->t('Now that you are authenticated with Google Analytics, select the') . '<strong>' . $this->t(' Google View ') . '</strong>' . $this->t('to collect analytics from.') .
+      '</li><li>' . $this->t('Save configuration.') .
+      '</li><li>' . $this->t('On the next cron job, analytics from the selected') . '<strong>' . $this->t(' Google View ') . '</strong>' . $this->t('will be saved to Drupal.') .
+      '</li><ul><li>' . $this->t('Information on the <a href=:href>@href</a> page is from the', $t_arg) . '<strong>' . $this->t(' Google View') . '</strong>' . $this->t('.') .
+      '</li><li>' . $this->t('After cron runs, compare pagepaths and pageview totals on the <a href=:href>@href</a> in the Top Twenty Results section with your Google Analytics.', $t_arg) .
+      '</li><li>' . $this->t('If date range is set to one of Google\'s predefined time intervals, the Pageviews in Drupal should match Google exactly.', $t_arg) .
+      '</li></ul></ol></p>';
+
+    return $markup_description;
+  }
+
+  /**
+   * Sets the start and end dates in configuration.
+   *
+   * @return array
+   *   Start and end dates.
+   */
+  public function setStartDateEndDate() {
+    $config = $this->config;
+
+    if (!empty($config->get('general_settings.custom_start_date') & !empty($config->get('general_settings.custom_start_date')))) {
+      $t_args = [
+        '%start_date' => $this->dateFormatter
+          ->format(strtotime($config->get('general_settings.custom_start_date')), 'custom', 'M j, Y'),
+        '%end_date' => $this->dateFormatter
+          ->format(strtotime($config->get('general_settings.custom_end_date')), 'custom', 'M j, Y'),
+      ];
+      return $t_args;
+    }
+    else {
+      $t_args = [];
+
+      switch ($config->get('general_settings.start_date')) {
+        case 'today':
+          $t_args = [
+            '%start_date' => date('M j, Y'),
+            '%end_date' => date('M j, Y'),
+          ];
+          break;
+
+        case 'yesterday':
+          $t_args = [
+            '%start_date' => date('M j, Y', time() - 60 * 60 * 24),
+            '%end_date' => date('M j, Y', time() - 60 * 60 * 24),
+          ];
+          break;
+
+        case '-1 week last sunday midnight':
+          $previous_week = strtotime('-1 week +1 day');
+
+          $start_week = strtotime('last sunday midnight', $previous_week);
+          $end_week = strtotime('next saturday', $start_week);
+
+          $start_week = date('M j, Y', $start_week);
+          $end_week = date('M j, Y', $end_week);
+
+          $t_args = [
+            '%start_date' => $start_week,
+            '%end_date' => $end_week,
+          ];
+          break;
+
+        case 'first day of previous month':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('first day of previous month')),
+            '%end_date' => date('M j, Y', strtotime('last day of previous month')),
+          ];
+          break;
+
+        case '7 days ago':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('7 days ago')),
+            '%end_date' => date('M j, Y', time() - 60 * 60 * 24),
+          ];
+          break;
+
+        case '30 days ago':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('30 days ago')),
+            '%end_date' => date('M j, Y', time() - 60 * 60 * 24),
+          ];
+          break;
+
+        case '3 months ago':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('3 months ago')),
+            '%end_date' => date('M j, Y', time() - 60 * 60 * 24),
+          ];
+          break;
+
+        case '6 months ago':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('6 months ago')),
+            '%end_date' => date('M j, Y', time() - 60 * 60 * 24),
+          ];
+          break;
+
+        case 'first day of last year':
+          $t_args = [
+            '%start_date' => date('M j, Y', strtotime('first day of last year')),
+            '%end_date' => date('M j, Y', strtotime('last day of last year')),
+          ];
+          break;
+
+        default:
+          $t_args = [
+            '%start_date' => 'N/A',
+            '%end_date' => 'N/A',
+          ];
+          break;
+      }
+
+      return $t_args;
+    }
+  }
 
 }

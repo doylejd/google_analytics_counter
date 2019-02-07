@@ -132,7 +132,7 @@ To add the custom Google Analytics Counter field to one or more contents.
 3. Click Save configuration.
 
 
-If you wish to remove the custom field from your system.
+#### If you wish to remove the custom field from your system.
 
 1. Go to the Custom field configuration page /admin/config/system/google-analytics-counter-configure-types.
 
@@ -150,7 +150,7 @@ At any time, you can add the custom field back to one or more content type
 3. Click Save configuration.
 
 
-To add the custom field to the content type's edit form
+#### To add the custom field to the content type's edit form
 
 1. Go to the Manage form display tab of the content type (Ex.: /admin/structure/types/manage/CONTENT-TYPE/form-display).
 
@@ -174,6 +174,32 @@ To add the custom field to the content type's view
 5. If a cron run is needed. Run cron.
 
 6. Handle the field's view on the view of the page like any other Drupal field.
+
+#### The custom field can also be added using standard Drupal procedures. 
+
+The only caveat to using standard Drupal procedures is the machine name of the field must be field_google_analytics_counter.
+
+Also If you add the custom field with standard Drupal procedures, you'll have to add the field to every content type you would like to see the pageview total on.
+
+1. Go to the custom field tab (/admin/config/system/google-analytics-counter-configure-types)
+
+2. Go to the content type you'd like to add the custom field to (/admin/structure/types/manage/form/fields)
+
+3. Click +Add field
+
+4. Under Add a new field, select Number (integer)
+
+5. Under Label, name the field Google Analytics Counter, which by default adds the machine name for the field field_google_analytics_counter. The machine name of the field is the key to getting the code to work. Make sure your field's machine name is field_google_analytics_counter. If you've never edited a machine name of a field before, remember that you input google_analytics_counter. Drupal adds the field_.
+
+6. Click Save and continue.
+
+7. Field settings should be Limited to 1.
+
+8. Add help text as you wish.
+
+9. Run cron.
+
+10. See the pageview total in the edit form, the view of the node, or in a view that you create.
 
 ### Project Status
 

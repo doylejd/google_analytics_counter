@@ -67,18 +67,8 @@ class GoogleAnalyticsCounterHelper {
         $query->addField('t', 'field_pageview_total');
         $query->condition('pageview_total', 0, '>');
         break;
-      case 'node_counter':
-        $query = $connection->select($table, 't');
-        $query->addField('t', 'field_totalcount');
-        $query->condition('totalcount', 0, '>');
-        break;
       case 'google_analytics_counter_storage_all_nodes':
         $query = $connection->select('google_analytics_counter_storage', 't');
-        break;
-      case 'node_field_data':
-        $query = $connection->select('node_field_data', 'nfd');
-        $query->fields('nfd');
-        $query->condition('status', NodeInterface::PUBLISHED);
         break;
       case 'queue':
         $query = $connection->select('queue', 'q');

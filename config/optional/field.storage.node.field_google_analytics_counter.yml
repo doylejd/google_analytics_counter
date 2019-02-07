@@ -6,11 +6,10 @@ dependencies:
 id: node.field_google_analytics_counter
 field_name: field_google_analytics_counter
 entity_type: node
-type: string
+type: integer
 settings:
-  max_length: 20
-  is_ascii: false
-  case_sensitive: false
+  unsigned: false
+  size: normal
 module: core
 locked: false
 cardinality: 1

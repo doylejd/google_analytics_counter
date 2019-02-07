@@ -27,7 +27,7 @@ interface GoogleAnalyticsCounterAppManagerInterface {
    *   - metrics: required [ga:pageviews]
    *   - sort: optional [ga:pageviews]
    *   - start-date: [default=-1 week]
-   *   - end_date: optional [default=tomorrow]
+   *   - end_date: optional [default=today]
    *   - start_index: [default=1]
    *   - max_results: optional [default=10,000].
    *   - filters: optional [default=none]
@@ -46,7 +46,7 @@ interface GoogleAnalyticsCounterAppManagerInterface {
   /**
    * Update the path counts.
    *
-   * @param string $index
+   * @param integer $index
    *   The index of the chunk to fetch and update.
    *
    * This function is triggered by hook_cron().
@@ -85,14 +85,14 @@ interface GoogleAnalyticsCounterAppManagerInterface {
    */
   public function setCacheOptions(array $parameters);
 
-  /**
-   * Get the count of pageviews for a path.
-   *
-   * @param string $path
-   *   The path to look up.
-   *
-   * @return string
-   *   Count of page views.
-   */
-  public function gacDisplayCount($path);
+//  /**
+//   * Get the count of pageviews for a path.
+//   *
+//   * @param string $path
+//   *   The path to look up.
+//   *
+//   * @return string
+//   *   Count of page views.
+//   */
+//  public function gacDisplayCount($path);
 }

@@ -98,13 +98,8 @@ class GoogleAnalyticsCounterAuthManager implements GoogleAnalyticsCounterAuthMan
    * Begin authentication to Google authentication page with the client_id.
    */
   public function beginGacAuthentication() {
-    global $base_url;
-    $current_path = \Drupal::service('path.current')->getPath();
-    $uri = \Drupal::service('path.alias_manager')->getAliasByPath($current_path);
-    $redirect_uri = $base_url . $uri;
-
     $gafeed = new GoogleAnalyticsCounterFeed();
-    $gafeed->beginAuthentication($this->config->get('general_settings.client_id'), $redirect_uri);
+    $gafeed->beginAuthentication($this->config->get('general_settings.client_id'), $this->config->get('general_settings.redirect_uri'));
   }
 
   /**
@@ -115,7 +110,6 @@ class GoogleAnalyticsCounterAuthManager implements GoogleAnalyticsCounterAuthMan
    *   from the Google Analytics Core Reporting API.
    */
   public function newGaFeed() {
-    global $base_url;
     $config = $this->config;
 
     // If the access token is still valid, return an authenticated GAFeed.
@@ -123,7 +117,7 @@ class GoogleAnalyticsCounterAuthManager implements GoogleAnalyticsCounterAuthMan
       return new GoogleAnalyticsCounterFeed($this->state->get('google_analytics_counter.access_token'));
     }
     // If the site has an access token and refresh token, but the access
-    // token has expired, authenticate the user with the refresh token.
+    // token has expired, authenticate the client with the refresh token.
     elseif ($this->state->get('google_analytics_counter.refresh_token')) {
       $client_id = $config->get('general_settings.client_id');
       $client_secret = $config->get('general_settings.client_secret');
@@ -143,24 +137,17 @@ class GoogleAnalyticsCounterAuthManager implements GoogleAnalyticsCounterAuthMan
       }
     }
     // If there is no access token or refresh token and client is returned
-    // to the config page with an access code, complete the authentication.
+    // to the config page with an access code completes the authentication.
     elseif (isset($_GET['code'])) {
       try {
-        $current_path = \Drupal::service('path.current')->getPath();
-        $uri = \Drupal::service('path.alias_manager')->getAliasByPath($current_path);
-        $redirect_uri = $base_url . $uri;
-
         $gac_feed = new GoogleAnalyticsCounterFeed();
-        $gac_feed->finishAuthentication($config->get('general_settings.client_id'), $config->get('general_settings.client_secret'), $redirect_uri);
+        $gac_feed->finishAuthentication($config->get('general_settings.client_id'), $config->get('general_settings.client_secret'), $config->get('general_settings.redirect_uri'));
 
         $this->state->setMultiple([
           'google_analytics_counter.access_token' => $gac_feed->accessToken,
           'google_analytics_counter.expires_at' => $gac_feed->expiresAt,
           'google_analytics_counter.refresh_token' => $gac_feed->refreshToken,
         ]);
-
-        $this->messenger->addStatus($this->t('You have been successfully authenticated.'), FALSE);
-
       }
       catch (Exception $e) {
         $this->messenger->addError($this->t('There was an authentication error. Message: %message', ['%message' => $e->getMessage()]));
@@ -178,16 +165,18 @@ class GoogleAnalyticsCounterAuthManager implements GoogleAnalyticsCounterAuthMan
    *   Array of options.
    */
   public function getWebPropertiesOptions() {
-    // When not authenticated, the only option is 'Unauthenticated'.
+    // When not authenticated of if there are no Analytics, no options will be displayed.
     $feed = $this->newGaFeed();
     if (!$feed) {
-      $options = ['unauthenticated' => 'Unauthenticated'];
+      $options = ['unauthenticated' => ''];
       return $options;
     }
 
-    // Get the profiles information from Google.
-    $web_properties = $feed->queryWebProperties()->results->items;
-    $profiles = $feed->queryProfiles()->results->items;
+    // Check for web properties.
+    if (isset($feed->queryWebProperties()->results->items)) {
+      $web_properties = $feed->queryWebProperties()->results->items;
+      $profiles = $feed->queryProfiles()->results->items;
+    }
 
     $options = [];
     // Add options for each web property.

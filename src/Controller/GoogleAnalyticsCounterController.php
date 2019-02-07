@@ -139,7 +139,7 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     ];
 
     // Get and format total pageviews.
-    $t_args = $this->getStartDateEndDate();
+    $t_args = $this->messageManager->setStartDateEndDate();
     $t_args += ['%total_pageviews' => number_format($this->state->get('google_analytics_counter.total_pageviews'))];
     $build['google_info']['total_pageviews'] = [
       '#type' => 'html_tag',
@@ -148,7 +148,7 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     ];
 
     // Get and format total paths.
-    $t_args = $this->getStartDateEndDate();
+    $t_args = $this->messageManager->setStartDateEndDate();
     $t_args += [
       '%total_paths' => number_format($this->state->get('google_analytics_counter.total_paths')),
     ];
@@ -253,13 +253,13 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     $build['drupal_info']['top_twenty_results'] = [
       '#type' => 'details',
       '#title' => $this->t('Top Twenty Results'),
-      '#open' => FALSE,
+      '#open' => TRUE,
     ];
 
     // Top Twenty Results for Google Analytics Counter table.
     $build['drupal_info']['top_twenty_results']['counter'] = [
       '#type' => 'details',
-      '#title' => $this->t('Pagepaths'),
+      '#title' => $this->t('The pages visited'),
       '#open' => FALSE,
       '#attributes' => [
         'class' => ['google-analytics-counter-counter'],
@@ -269,7 +269,7 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     $build['drupal_info']['top_twenty_results']['counter']['summary'] = [
       '#type' => 'html_tag',
       '#tag' => 'p',
-      '#value' => $this->t("A pagepath can include paths that don't have an NID, like /search."),
+      '#value' => $this->t("The pages visited, listed by URI. The URI is the portion of a page's URL following the domain name; for example, the URI portion of www.example.com/contact.html is /contact.html."),
     ];
 
     $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter');
@@ -286,7 +286,7 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     // Top Twenty Results for Google Analytics Counter Storage table.
     $build['drupal_info']['top_twenty_results']['storage'] = [
       '#type' => 'details',
-      '#title' => $this->t('Pageview Totals'),
+      '#title' => $this->t('Pageviews'),
       '#open' => FALSE,
       '#attributes' => [
         'class' => ['google-analytics-counter-storage'],
@@ -296,7 +296,7 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     $build['drupal_info']['top_twenty_results']['storage']['summary'] = [
       '#type' => 'html_tag',
       '#tag' => 'p',
-      '#value' => $this->t('A pageview total may be greater than PAGEVIEWS because a pageview total includes page aliases, node/id, and node/id/ URIs.'),
+      '#value' => $this->t('Pageviews is the total number of pages viewed. Pageviews include node/id, aliases, international, and redirects, amongst other pages Google has determined belong to the pageview.'),
     ];
 
     $rows = $this->messageManager->getTopTwentyResults('google_analytics_counter_storage');
@@ -345,36 +345,6 @@ class GoogleAnalyticsCounterController extends ControllerBase {
     $build = $this->messageManager->revokeAuthenticationMessage($build);
 
     return $build;
-  }
-
-  /**
-   * Calculates total pageviews for fixed start and end date or for time ago.
-   *
-   * @return array
-   *   Start & end dates.
-   */
-  protected function getStartDateEndDate() {
-    $config = $this->config;
-
-    if (!empty($config->get('general_settings.fixed_start_date'))) {
-      $t_args = [
-        '%start_date' => $this->dateFormatter
-          ->format(strtotime($config->get('general_settings.fixed_start_date')), 'custom', 'M j, Y'),
-        '%end_date' => $this->dateFormatter
-          ->format(strtotime($config->get('general_settings.fixed_end_date')), 'custom', 'M j, Y'),
-      ];
-      return $t_args;
-    }
-    else {
-      $t_args = [
-        '%start_date' => $config->get('general_settings.start_date') ? $this->dateFormatter
-          ->format(strtotime('yesterday') - strtotime(ltrim($config->get('general_settings.start_date'), '-'), 0), 'custom', 'M j, Y') : 'N/A',
-        '%end_date' => $config->get('general_settings.start_date') ? $this->dateFormatter
-          ->format(strtotime('yesterday'), 'custom', 'M j, Y') : 'N/A',
-      ];
-
-      return $t_args;
-    }
   }
 
 }

@@ -13,7 +13,6 @@ use Drupal\Core\State\StateInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Psr\Log\LoggerInterface;
 
-
 /**
  * Class GoogleAnalyticsCounterAppManager.
  *
@@ -85,13 +84,6 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
   protected $messenger;
 
   /**
-   * Prefixes.
-   *
-   * @var array
-   */
-  protected $prefixes;
-
-  /**
    * The time service.
    *
    * @var \Drupal\Component\Datetime\TimeInterface
@@ -138,7 +130,6 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     $this->languageManager = $language;
     $this->logger = $logger;
     $this->messenger = $messenger;
-    $this->prefixes = [];
     $this->authManager = $auth_manager;
   }
 
@@ -173,7 +164,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    *   - metrics: required [ga:pageviews]
    *   - sort: optional [ga:pageviews]
    *   - start-date: [default=-1 week]
-   *   - end_date: optional [default=tomorrow]
+   *   - end_date: optional [default=today]
    *   - start_index: [default=1]
    *   - max_results: optional [default=10,000].
    *   - filters: optional [default=none]
@@ -299,9 +290,9 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     foreach ($this->languageManager->getLanguages() as $language) {
       $alias = $this->aliasManager->getAliasByPath($path, $language->getId());
       $aliases[] = $alias;
-      if (array_key_exists($language->getId(), $this->prefixes) && $this->prefixes[$language->getId()]) {
-        $aliases[] = '/' . $this->prefixes[$language->getId()] . $path;
-        $aliases[] = '/' . $this->prefixes[$language->getId()] . $alias;
+      if ($language->getId()) {
+        $aliases[] = '/' . $language->getId() . $path;
+        $aliases[] = '/' . $language->getId() . $alias;
       }
     }
 
@@ -309,8 +300,6 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     $aliases = array_merge($aliases, array_map(function ($path) {
       return $path . '/';
     }, $aliases));
-
-    // See scrum_notes/google_analytics_counter/aliases.md
 
     // It's the front page
     // Todo: Could be brittle
@@ -333,7 +322,8 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    */
   protected function sumPageviews($aliases) {
     // $aliases can make pageview_total greater than pageviews
-    // because $aliases can include page aliases, node/id, and node/id/ URIs.
+    // because $aliases can include page aliases, node/id, and node/id/, translations
+    // redirects and other URIs which are all the same node.
     $hashes = array_map('md5', $aliases);
     $path_counts = $this->connection->select('google_analytics_counter', 'gac')
       ->fields('gac', ['pageviews'])
@@ -362,8 +352,6 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
    * @throws \Exception
    */
   protected function updateCounterStorage($nid, $sum_pageviews, $bundle, $vid) {
-    $config = $this->config;
-
     $this->connection->merge('google_analytics_counter_storage')
       ->key('nid', $nid)
       ->fields([
@@ -385,7 +373,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
         'deleted' => 0,
         'entity_id' => $nid,
         'revision_id' => $vid,
-        'langcode' => 'en',
+        'langcode' => \Drupal::languageManager()->getDefaultLanguage()->getId(),
         'delta' => 0,
         'field_google_analytics_counter_value' => $sum_pageviews,
       ])
@@ -413,7 +401,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     - metrics: required [ga:pageviews]
     - sort: optional [ga:pageviews]
     - start-date: [default=-1 week]
-    - end_date: optional [default=tomorrow]
+    - end_date: optional [default=today]
     - start_index: [default=1]
     - max_results: optional [default=10,000].
     - filters: optional [default=none]
@@ -426,10 +414,8 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
       'sort_metric' => NULL,
       'filters' => NULL,
       'segment' => NULL,
-      'start_date' => !empty($config->get('general_settings.fixed_start_date')) ? strtotime($config->get('general_settings.fixed_start_date')) : strtotime($config->get('general_settings.start_date')),
-      // If fixed dates are not in use, use 'tomorrow' to offset any timezone
-      // shift between the hosting and Google servers.
-      'end_date' => !empty($config->get('general_settings.fixed_end_date')) ? strtotime($config->get('general_settings.fixed_end_date')) : strtotime('tomorrow'),
+      'start_date' => !empty($config->get('general_settings.start_date')) ? strtotime($config->get('general_settings.start_date')) : strtotime($config->get('general_settings.custom_start_date')),
+      'end_date' => !empty($config->get('general_settings.end_date')) ? strtotime($config->get('general_settings.end_date')) : strtotime($config->get('general_settings.custom_end_date')),
       'start_index' => $pointer,
       'max_results' => $chunk,
     ];
@@ -471,7 +457,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     //Instantiate a new GoogleAnalyticsCounterFeed object.
     $feed = $this->authManager->newGaFeed();
     if (!$feed) {
-      throw new \RuntimeException($this->t('The GoogleAnalyticsCounterFeed could not be initialized is Google Analytics Counter authenticated?'));
+      throw new \RuntimeException($this->t('The GoogleAnalyticsCounterFeed could not be initialized. Is Google Analytics Counter authenticated?'));
     }
 
     // Make the query to Google.
@@ -499,29 +485,43 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
   /**
    * Get the count of pageviews for a path.
    *
-   * @param string $path
-   *   The path to look up.
-   *
    * @return string
    *   Count of page views.
    */
-  public function gacDisplayCount($path) {
+  public function gacDisplayCount() {
     // Make sure the path starts with a slash.
+    $path = \Drupal::service('path.current')->getPath();
     $path = '/' . trim($path, ' /');
 
+    $sum_pageviews = 0;
     // It's the front page.
     if ($this->pathMatcher->isFrontPage()) {
       $aliases = ['/'];
       $sum_pageviews = $this->sumPageviews($aliases);
     }
+
+    // It's a node.
+    else if ($node = \Drupal::routeMatch()->getParameter('node')) {
+      if ($node instanceof \Drupal\node\NodeInterface) {
+        $query = $this->connection->select('google_analytics_counter_storage', 'gacs');
+        $query->fields('gacs', ['pageview_total']);
+        $query->condition('nid', $node->id());
+        $sum_pageviews = $query->execute()->fetchField();
+      }
+    }
+
+    //It's a path.
     else {
       // Look up the alias, with, and without trailing slash.
       // todo: The array is an accommodation to sumPageViews()
       $aliases = [$this->aliasManager->getAliasByPath($path)];
-
+      // dsm($aliases, '$aliases');
       $sum_pageviews = $this->sumPageviews($aliases);
+      // dsm($sum_pageviews, '$sum_pageviews');
+
     }
 
+    // dsm($sum_pageviews);
     return number_format($sum_pageviews);
   }
 

@@ -7,9 +7,6 @@ general_settings:
   api_dayquota: 50000
   cache_length: 86400
   queue_time: 120
-  start_date: '-1 day'
-  advanced_date_checkbox: false
-  fixed_start_date: ''
-  fixed_end_date: ''
+  start_date: '30 days ago'
   project_name: ''
   profile_id: ''

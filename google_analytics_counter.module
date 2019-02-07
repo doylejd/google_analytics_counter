@@ -146,3 +146,18 @@ function google_analytics_counter_form_node_form_alter(&$form, FormStateInterfac
     $form[$field_requiring_permission]['#access'] = \Drupal::currentUser()->hasPermission('access content');
   }
 }
+
+/**
+ * Implements hook_form_alter().
+ */
+function google_analytics_counter_form_alter(&$form, FormStateInterface $form_state) {
+  /* @var \Drupal\google_analytics_counter\GoogleAnalyticsCounterAuthManagerInterface $auth_manager */
+  $auth_manager = \Drupal::service('google_analytics_counter.auth_manager');
+
+  // Make Client ID, Client Secret, and Authorized Redirect URI read only when authenticated.
+  if ($form['#form_id'] == 'google_analytics_counter_admin_auth') {
+    $auth_manager->isAuthenticated() === TRUE ? $form['client_id']['#disabled'] = 'readonly' : NULL;
+    $auth_manager->isAuthenticated() === TRUE ? $form['client_secret']['#disabled'] = 'readonly' : NULL;
+    $auth_manager->isAuthenticated() === TRUE ? $form['redirect_uri']['#disabled'] = 'readonly' : NULL;
+  }
+}

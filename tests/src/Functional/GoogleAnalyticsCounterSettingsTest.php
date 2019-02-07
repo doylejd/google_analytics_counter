@@ -69,9 +69,8 @@ class GoogleAnalyticsCounterSettingsTest extends BrowserTestBase {
     $assert->fieldExists('cache_length');
     $assert->fieldExists('queue_time');
     $assert->fieldExists('start_date');
-    $assert->fieldExists('advanced_date_checkbox');
-    $assert->fieldExists('fixed_start_date');
-    $assert->fieldExists('fixed_end_date');
+    $assert->fieldExists('custom_start_date');
+    $assert->fieldExists('custom_end_date');
 
     $edit = [
       'cron_interval' => 0,

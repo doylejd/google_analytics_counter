@@ -35,13 +35,10 @@ google_analytics_counter.settings:
         start_date:
           type: string
           label: 'The start date for Google Analytics queries.'
-        advanced_date_checkbox:
-          type: boolean
-          label: 'Whether to override the start date with a fixed start and end date.'
-        fixed_start_date:
+        custom_start_date:
           type: string
           label: 'The fixed start date for Google Analytics queries.'
-        fixed_end_date:
+        custom_end_date:
           type: string
           label: 'The fixed end date for Google Analytics queries.'
         project_name:

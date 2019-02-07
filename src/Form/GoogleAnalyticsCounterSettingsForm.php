@@ -172,81 +172,71 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
     // Google Analytics start date settings.
     $form['start_date_details'] = [
       '#type' => 'details',
-      '#title' => $this->t('Query Dates for Google Analytics'),
+      '#title' => $this->t('Date range'),
       '#open' => TRUE,
     ];
 
     $start_date = [
-      '-1 day' => $this->t('-1 day'),
-      '-1 week' => $this->t('-1 week'),
-      '-1 month' => $this->t('-1 month'),
-      '-3 months' => $this->t('-3 months'),
-      '-6 months' => $this->t('-6 months'),
-      '-1 year' => $this->t('-1 year'),
-      '2005-01-01' => $this->t('Since 2005-01-01'),
+      'custom' => $this->t('Custom'),
+      'today' => $this->t('Today'),
+      'yesterday' => $this->t('Yesterday'),
+      '-1 week last sunday midnight' => $this->t('Last week'),
+      'first day of previous month' => $this->t('Last month'),
+      '7 days ago' => $this->t('Last 7 days'),
+      '30 days ago' => $this->t('Last 30 days'),
+      '3 months ago' => $this->t('Last 3 months'),
+      '6 months ago' => $this->t('Last 6 months'),
+      'first day of last year' => $this->t('Last year'),
     ];
 
     $form['start_date_details']['start_date'] = [
       '#type' => 'select',
-      '#title' => $this->t('Start date for Google Analytics queries'),
-      '#default_value' => $config->get('general_settings.start_date'),
-      '#description' => $this->t('The earliest valid start date for Google Analytics is 2005-01-01.'),
+      '#title' => $this->t('Date range'),
+      '#default_value' => !empty($config->get('general_settings.start_date')) ? $config->get('general_settings.start_date') : '30 days ago',
+      '#required' => TRUE,
       '#options' => $start_date,
-      '#states' => [
-        'disabled' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => TRUE],
-        ],
-        'required' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => FALSE],
-        ],
-        'visible' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => FALSE],
-        ],
-      ],
     ];
 
     $form['start_date_details']['advanced_date'] = [
       '#type' => 'details',
-      '#title' => $this->t('Query with fixed dates'),
+      '#title' => $this->t('Custom dates'),
+      '#description' => $this->t('Custom date fields are enabled if Date range is Custom.'),
       '#states' => [
         'open' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => TRUE],
+          ':input[name="start_date"]' => ['value' => 'custom'],
+        ],
+        'enabled' => [
+          ':input[name="start_date"]' => ['value' => 'custom'],
         ],
       ],
     ];
 
-    $form['start_date_details']['advanced_date']['advanced_date_checkbox'] = [
-      '#type' => 'checkbox',
-      '#title' => '<strong>' . $this->t('FIXED DATES') . '</strong>',
-      '#default_value' => $config->get('general_settings.advanced_date_checkbox'),
-      '#description' => $this->t('Select if you wish to query Google Analytics with a fixed start date and a fixed end date.'),
-    ];
-
-    $form['start_date_details']['advanced_date']['fixed_start_date'] = [
+    $form['start_date_details']['advanced_date']['custom_start_date'] = [
       '#type' => 'date',
-      '#title' => $this->t('Fixed start date'),
-      '#description' => $this->t('Set a fixed start date for Google Analytics queries. Disabled if FIXED DATES is <strong>unchecked</strong>.'),
-      '#default_value' => $config->get('general_settings.fixed_start_date'),
+      '#title' => $this->t('Custom start date'),
+      '#description' => $this->t('Set a custom start date for Google Analytics queries.'),
+      '#default_value' => $config->get('general_settings.custom_start_date'),
       '#states' => [
-        'disabled' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => FALSE],
+        'required' => [
+          ':input[name="start_date"]' => ['value' => 'custom'],
         ],
       ],
     ];
 
-    $form['start_date_details']['advanced_date']['fixed_end_date'] = [
+    $form['start_date_details']['advanced_date']['custom_end_date'] = [
       '#type' => 'date',
-      '#title' => $this->t('Fixed end date'),
-      '#description' => $this->t('Set a fixed end date for Google Analytics queries. Disabled if FIXED DATES is <strong>unchecked</strong>.'),
-      '#default_value' => $config->get('general_settings.fixed_end_date'),
+      '#title' => $this->t('Custom end date'),
+      '#description' => $this->t('Set a custom end date for Google Analytics queries.'),
+      '#default_value' => $config->get('general_settings.custom_end_date'),
       '#states' => [
-        'disabled' => [
-          ':input[name="advanced_date_checkbox"]' => ['checked' => FALSE],
+        'required' => [
+          ':input[name="start_date"]' => ['value' => 'custom'],
         ],
       ],
     ];
 
-    if ($this->authManager->isAuthenticated() !== TRUE) {
+    $web_properties = key($this->authManager->getWebPropertiesOptions());
+    if ($web_properties === 'unauthenticated') {
       $this->messageManager->notAuthenticatedMessage();
     }
 
@@ -262,16 +252,19 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
     $current_queue_time = $config->get('general_settings.queue_time');
 
     $values = $form_state->getValues();
+
+    $end_date = $this->setEndDate($values);
+
     $config
       ->set('general_settings.cron_interval', $values['cron_interval'])
       ->set('general_settings.chunk_to_fetch', $values['chunk_to_fetch'])
       ->set('general_settings.api_dayquota', $values['api_dayquota'])
       ->set('general_settings.cache_length', $values['cache_length'] * 3600)
       ->set('general_settings.queue_time', $values['queue_time'])
-      ->set('general_settings.start_date', $values['start_date'])
-      ->set('general_settings.advanced_date_checkbox', $values['advanced_date_checkbox'])
-      ->set('general_settings.fixed_start_date', $values['advanced_date_checkbox'] == 1 ? $values['fixed_start_date'] : '')
-      ->set('general_settings.fixed_end_date', $values['advanced_date_checkbox'] == 1 ? $values['fixed_end_date'] : '')
+      ->set('general_settings.start_date', $values['start_date'] == 'custom' ? '' : $values['start_date'])
+      ->set('general_settings.end_date', $values['start_date'] == 'custom' ? '' : $end_date)
+      ->set('general_settings.custom_start_date', $values['start_date'] == 'custom' ? $values['custom_start_date'] : '')
+      ->set('general_settings.custom_end_date', $values['start_date'] == 'custom' ? $values['custom_end_date'] : '')
       ->save();
 
     // If the queue time has change the cache needs to be cleared.
@@ -281,6 +274,59 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
     }
 
     parent::submitForm($form, $form_state);
+  }
+
+  /**
+   * Sets the end date into configuration.
+   * @param array $values
+   *
+   * @return string
+   */
+  protected function setEndDate(array $values) {
+
+    $end_date = '';
+    switch ($values['start_date']) {
+      case 'today':
+        $end_date = 'today';
+        break;
+
+      case 'yesterday':
+        $end_date = 'yesterday';
+        break;
+
+      case '-1 week last sunday midnight':
+        $end_date = '-1 week next saturday';
+        break;
+
+      case 'first day of previous month':
+        $end_date = 'last day of previous month';
+        break;
+
+      case '7 days ago':
+        $end_date = '7 days ago +6 days';
+        break;
+
+      case '30 days ago':
+        $end_date = '30 days ago +30 days -1 day';
+        break;
+
+      case '3 months ago':
+        $end_date = '3 months ago +3 months -1 day';
+        break;
+
+      case '6 months ago':
+        $end_date = '6 months ago +6 months - 1 day';
+        break;
+
+      case 'first day of last year':
+        $end_date = 'last day of last year';
+        break;
+
+      default:
+        break;
+    }
+
+    return $end_date;
   }
 
 }

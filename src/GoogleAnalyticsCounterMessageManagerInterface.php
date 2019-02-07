@@ -54,4 +54,21 @@ interface GoogleAnalyticsCounterMessageManagerInterface {
    * @return mixed
    */
   public function getTopTwentyResults($table);
+
+  /**
+   * Voluminous on screen instructions about authentication.
+   *
+   * @param $web_properties
+   *
+   * @return string
+   */
+  public function authenticationInstructions($web_properties);
+
+  /**
+   * Sets the start and end dates in configuration.
+   *
+   * @return array
+   *   Start and end dates.
+   */
+  public function setStartDateEndDate();
 }

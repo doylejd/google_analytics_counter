@@ -16,7 +16,7 @@ services:
 
   google_analytics_counter.message_manager:
     class: Drupal\google_analytics_counter\GoogleAnalyticsCounterMessageManager
-    arguments: ['@config.factory', '@database', '@state', '@logger.channel.google_analytics_counter', '@messenger']
+    arguments: ['@config.factory', '@database', '@state', '@date.formatter', '@logger.channel.google_analytics_counter', '@messenger']
 
   # Logger.
 
