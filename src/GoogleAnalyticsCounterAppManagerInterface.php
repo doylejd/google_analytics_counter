@@ -15,7 +15,7 @@ interface GoogleAnalyticsCounterAppManagerInterface {
    *
    * @return mixed
    */
-  public function getTotalResults();
+  public function getTotalResults($date_range);
 
   /**
    * Request report data.
