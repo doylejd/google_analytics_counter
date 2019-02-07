@@ -170,7 +170,6 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
     ];
 
     $date_ranges = [
-      'custom' => $this->t('Custom'),
       'today' => $this->t('Today'),
       'yesterday' => $this->t('Yesterday'),
       '-1 week last sunday midnight' => $this->t('Last week'),
@@ -187,7 +186,7 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
     $form['date_ranges'] = [
       '#required' => TRUE,
       '#type' => 'checkboxes',
-      '#title' => $this->t('Start date for Google Analytics queries'),
+      '#title' => $this->t('Date Ranges to pull data for:'),
       '#default_value' => $default_date_ranges,
       '#description' => $this->t('The earliest valid start date for Google Analytics is 2005-01-01.'),
       '#options' => $date_ranges,

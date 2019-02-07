@@ -248,7 +248,7 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
   public function setStartDateEndDate() {
     $config = $this->config;
 
-    if (!empty($config->get('general_settings.custom_start_date') & !empty($config->get('general_settings.custom_start_date')))) {
+    if (!empty($config->get('general_settings.custom_start_date') && !empty($config->get('general_settings.custom_end_date')))) {
       $t_args = [
         '%start_date' => $this->dateFormatter
           ->format(strtotime($config->get('general_settings.custom_start_date')), 'custom', 'M j, Y'),

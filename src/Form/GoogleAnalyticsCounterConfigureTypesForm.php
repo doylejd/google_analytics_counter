@@ -162,9 +162,9 @@ class GoogleAnalyticsCounterConfigureTypesForm extends ConfigFormBase {
 
         // Add the field if the field has been checked.
         if ($values['gac_type_remove_storage'] == FALSE && $value == 1) {
-          $this->customField->gacPreAddField($type, $key, $value, $date);
+          $this->customField->gacPreAddField($type, $key, $value, $date_value);
         } else if ($values['gac_type_remove_storage'] == FALSE && $value == 0) {
-          $this->customField->gacPreDeleteField($type, $key, $date);
+          $this->customField->gacPreDeleteField($type, $key, $date_value);
 
           // Update the gac_type_{content_type} configuration.
           $config_factory->getEditable('google_analytics_counter.settings')
@@ -174,8 +174,9 @@ class GoogleAnalyticsCounterConfigureTypesForm extends ConfigFormBase {
           // Delete the field.
           if ($values['gac_type_remove_storage'] == TRUE) {
             // Delete the field.
-            $this->customField->gacPreDeleteField($type, $key, $date);
+            $this->customField->gacPreDeleteField($type, $key, $date_value);
             // Delete the field storage.
+            // TODO: Need to update this to handle multiple fields.
             $this->customField->gacDeleteFieldStorage();
             // Set all the gac_type_{content_type} to NULL.
             $this->customField->gacChangeConfigToNull();
