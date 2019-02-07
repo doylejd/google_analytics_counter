@@ -146,7 +146,7 @@ class GoogleAnalyticsCounterConfigureTypesForm extends ConfigFormBase {
       ->save();
 
     // Load date_ranges so we know what fields to add.
-    $date_ranges = json_decode($config->get('general_settings.start_date'));
+    $date_ranges = json_decode($config->get('general_settings.date_ranges'));
     // Loop through all date ranges currently enabled to re-evaluate fields.
     foreach($date_ranges as $date => $date_value){
     // Loop through each content type. Add/subtract the custom field or do nothing.

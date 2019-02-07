@@ -498,7 +498,7 @@ function google_analytics_counter_update_8012() {
   $config_factory = \Drupal::configFactory()->getEditable('google_analytics_counter.settings')->get('general_settings.chunk_to_fetch');
   $settings_config = $config_factory->getEditable('google_analytics_counter.settings');
   echo $settings_config->get('general_settings.chunk_to_fetch');
-  $start_date = json_decode($settings_config->get('general_settings.start_date'));
+  $start_date = json_decode($settings_config->get('general_settings.date_ranges'));
   if (json_last_error() != JSON_ERROR_NONE) {
     $start_date = $settings_config->get('general_settings.start_date');
     $date_range = json_encode([$start_date => $start_date]);

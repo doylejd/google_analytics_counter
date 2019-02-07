@@ -220,11 +220,6 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
       '#title' => $this->t('Date range'),
       '#default_value' => !empty($config->get('general_settings.start_date')) ? $config->get('general_settings.start_date') : '30 days ago',
       '#required' => TRUE,
-
-//      '#type' => 'checkboxes',
-//      '#title' => $this->t('Start date for Google Analytics queries'),
-//      '#default_value' => $default_start_dates,
-//      '#description' => $this->t('The earliest valid start date for Google Analytics is 2005-01-01.'),
       '#options' => $start_date,
     ];
 
@@ -311,7 +306,7 @@ class GoogleAnalyticsCounterSettingsForm extends ConfigFormBase {
       ->set('general_settings.end_date', $values['start_date'] == 'custom' ? '' : $end_date)
       ->set('general_settings.custom_start_date', $values['start_date'] == 'custom' ? $values['custom_start_date'] : '')
       ->set('general_settings.custom_end_date', $values['start_date'] == 'custom' ? $values['custom_end_date'] : '')
-      ->set('general_settings.date_ranges',  json_encode($values['start_date']))
+      ->set('general_settings.date_ranges',  json_encode($values['date_ranges']))
       ->save();
 
     // If the queue time has change the cache needs to be cleared.

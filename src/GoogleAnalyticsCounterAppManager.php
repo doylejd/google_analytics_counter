@@ -327,7 +327,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
 
     // See scrum_notes/google_analytics_counter/aliases.md
 
-    $date_ranges = json_decode($this->config->get('general_settings.start_date'));
+    $date_ranges = json_decode($this->config->get('general_settings.date_ranges'));
 
   // Loop through all date ranges currently enabled to re-evaluate fields.
     foreach($date_ranges as $date => $date_value){
@@ -445,7 +445,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
     $pointer = $step * $chunk + 1;
 
     // Enhancements to support multiple time slots.
-    $date_range_val = $config->get('general_settings.start_date');
+    $date_range_val = $config->get('general_settings.date_ranges');
     $date_ranges = (array) json_decode($date_range_val);
 
     /**
@@ -468,7 +468,7 @@ class GoogleAnalyticsCounterAppManager implements GoogleAnalyticsCounterAppManag
       'sort_metric' => NULL,
       'filters' => NULL,
       'segment' => NULL,
-      'date_ranges' => !empty($config->get('general_settings.fixed_start_date')) ? strtotime($config->get('general_settings.fixed_start_date')) : $date_ranges ,
+      'date_ranges' =>  $date_ranges ,
       'start_date' => !empty($config->get('general_settings.start_date')) ? strtotime($config->get('general_settings.start_date')) : strtotime($config->get('general_settings.custom_start_date')),
       'end_date' => !empty($config->get('general_settings.end_date')) ? strtotime($config->get('general_settings.end_date')) : strtotime($config->get('general_settings.custom_end_date')),
       'start_index' => $pointer,

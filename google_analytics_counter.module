@@ -68,7 +68,7 @@ function google_analytics_counter_cron() {
 
       // Load up date_ranges configured in settings.
       // Enhancements to support multiple time slots.
-      $date_range_val = $config->get('general_settings.start_date');
+      $date_range_val = $config->get('general_settings.date_ranges');
       $date_ranges = (array) json_decode($date_range_val);
       foreach($date_ranges as $date => $date_range) {
         $app_manager->getTotalResults($date_range);
@@ -144,7 +144,7 @@ function google_analytics_counter_page_attachments(&$page) {
  */
 function google_analytics_counter_form_node_form_alter(&$form, FormStateInterface $form_state) {
   $config = \Drupal::config('google_analytics_counter.settings');
-  $date_ranges = json_decode($config->get('general_settings.start_date'));
+  $date_ranges = json_decode($config->get('general_settings.date_ranges'));
 
   // Loop through all date ranges currently enabled to re-evaluate fields.
   // TODO: Look at improving this. Semi disconected and non-intuitive.
