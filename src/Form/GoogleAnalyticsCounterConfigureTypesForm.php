@@ -145,38 +145,42 @@ class GoogleAnalyticsCounterConfigureTypesForm extends ConfigFormBase {
       ->set('general_settings.gac_type_remove_storage', $values['gac_type_remove_storage'])
       ->save();
 
+    // Load date_ranges so we know what fields to add.
+    $date_ranges = json_decode($config->get('general_settings.date_ranges'));
+    // Loop through all date ranges currently enabled to re-evaluate fields.
+    foreach($date_ranges as $date => $date_value){
     // Loop through each content type. Add/subtract the custom field or do nothing.
-    foreach ($values as $key => $value) {
-      if ($key == 'gac_type_remove_storage') {
-        continue;
-      }
+      foreach ($values as $key => $value) {
+        if ($key == 'gac_type_remove_storage') {
+          continue;
+        }
 
-      // Get the NodeTypeInterface $type from gac_type_{content_type}.
-      $type = \Drupal::service('entity.manager')
-        ->getStorage('node_type')
-        ->load(substr($key, 9));
+        // Get the NodeTypeInterface $type from gac_type_{content_type}.
+        $type = \Drupal::service('entity.manager')
+          ->getStorage('node_type')
+          ->load(substr($key, 9));
 
-      // Add the field if the field has been checked.
-      if ($values['gac_type_remove_storage'] == FALSE && $value == 1) {
-        $this->customField->gacPreAddField($type, $key, $value);
-      }
-      else if ($values['gac_type_remove_storage'] == FALSE && $value == 0) {
-        $this->customField->gacPreDeleteField($type, $key);
+        // Add the field if the field has been checked.
+        if ($values['gac_type_remove_storage'] == FALSE && $value == 1) {
+          $this->customField->gacPreAddField($type, $key, $value, $date_value);
+        } else if ($values['gac_type_remove_storage'] == FALSE && $value == 0) {
+          $this->customField->gacPreDeleteField($type, $key, $date_value);
 
-        // Update the gac_type_{content_type} configuration.
-        $config_factory->getEditable('google_analytics_counter.settings')
-          ->set("general_settings.$key", NULL)
-          ->save();
-      }
-      else {
-        // Delete the field.
-        if ($values['gac_type_remove_storage'] == TRUE) {
+          // Update the gac_type_{content_type} configuration.
+          $config_factory->getEditable('google_analytics_counter.settings')
+            ->set("general_settings.$key", NULL)
+            ->save();
+        } else {
           // Delete the field.
-          $this->customField->gacPreDeleteField($type, $key);
-          // Delete the field storage.
-          $this->customField->gacDeleteFieldStorage();
-          // Set all the gac_type_{content_type} to NULL.
-          $this->customField->gacChangeConfigToNull();
+          if ($values['gac_type_remove_storage'] == TRUE) {
+            // Delete the field.
+            $this->customField->gacPreDeleteField($type, $key, $date_value);
+            // Delete the field storage.
+            // TODO: Need to update this to handle multiple fields.
+            $this->customField->gacDeleteFieldStorage();
+            // Set all the gac_type_{content_type} to NULL.
+            $this->customField->gacChangeConfigToNull();
+          }
         }
       }
     }

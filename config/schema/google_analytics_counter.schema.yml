@@ -35,6 +35,9 @@ google_analytics_counter.settings:
         start_date:
           type: string
           label: 'The start date for Google Analytics queries.'
+        date_ranges:
+          type: string
+          label: 'The date_ranges for Google Analytics queries.'
         custom_start_date:
           type: string
           label: 'The fixed start date for Google Analytics queries.'

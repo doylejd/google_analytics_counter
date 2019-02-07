@@ -171,21 +171,20 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
    *
    * @return mixed
    */
-  public function getTopTwentyResults($table) {
+  public function getTopTwentyResults($table, $rows, $date_range) {
     $query = $this->connection->select($table, 't');
     $query->range(0, 20);
     $rows = [];
     switch ($table) {
       case 'google_analytics_counter':
         $query->fields('t', ['pagepath', 'pageviews']);
+        $query->condition('date_range', $date_range);
         $query->orderBy('pageviews', 'DESC');
         $result = $query->execute()->fetchAll();
         $rows = [];
         foreach ($result as $value) {
-          $rows[] = [
-            $value->pagepath,
-            $value->pageviews,
-          ];
+          $rows[$value->pagepath]['page_path'] = $value->pagepath;
+          $rows[$value->pagepath][$date_range] = $value->pageviews;
         }
         break;
       case 'google_analytics_counter_storage':
@@ -249,7 +248,7 @@ class GoogleAnalyticsCounterMessageManager implements GoogleAnalyticsCounterMess
   public function setStartDateEndDate() {
     $config = $this->config;
 
-    if (!empty($config->get('general_settings.custom_start_date') & !empty($config->get('general_settings.custom_start_date')))) {
+    if (!empty($config->get('general_settings.custom_start_date') && !empty($config->get('general_settings.custom_end_date')))) {
       $t_args = [
         '%start_date' => $this->dateFormatter
           ->format(strtotime($config->get('general_settings.custom_start_date')), 'custom', 'M j, Y'),
